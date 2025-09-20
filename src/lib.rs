@@ -4,8 +4,13 @@ pub mod com;
 #[cfg(feature = "desktop-icons")]
 pub mod desktop_icons;
 
+#[cfg(feature = "display-config")]
+pub mod display_config;
+
 /// Re-exported modules from the windows crate with more useful naming.
 pub mod win {
+    #[cfg(feature = "win-display")]
+    pub use windows::Win32::Devices::Display as display;
     #[cfg(feature = "win-com")]
     pub use windows::Win32::System::Com as com;
     #[cfg(feature = "win-ole")]

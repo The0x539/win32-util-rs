@@ -9,14 +9,19 @@ edition = "2024"
 version = "0.62"
 
 [features]
-default = ["desktop-icons"]
 
 # windows-rs feature "aliases"/"re-exports"
 win-com = ["windows/Win32_System_Com"]
 win-ole = ["windows/Win32_System_Ole"]
 win-shell = ["windows/Win32_UI_Shell"]
 win-variant = ["win-ole", "windows/Win32_System_Variant"]
+win-display = ["windows/Win32_Devices_Display"]
 
 # actual crate features
 com = ["win-com"]
 desktop-icons = ["com", "win-variant", "win-shell"]
+display-config = ["win-display"]
+
+[[example]]
+name = "query_display_config"
+required-features = ["display-config"]
