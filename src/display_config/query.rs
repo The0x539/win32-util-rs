@@ -20,33 +20,33 @@ pub fn database_current() -> Result<(DisplayConfig, d::DISPLAYCONFIG_TOPOLOGY_ID
     Ok((config, id))
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct DisplayConfig {
     pub paths: Vec<PathInfo>,
     pub modes: Vec<DisplayModeInfo>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct PathInfo {
     pub source: PathSourceInfo,
     pub target: PathTargetInfo,
     pub flags: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct DisplayModeInfo {
     pub id: DisplayId,
     pub mode: ModeInfo,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum ModeInfo {
     Target(VideoSignalInfo),
     Source(SourceMode),
-    DesktopImage(),
+    DesktopImage(DesktopImageInfo),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct VideoSignalInfo {
     pub pixel_rate: u64,
     pub h_sync_freq: Rational,
@@ -58,7 +58,7 @@ pub struct VideoSignalInfo {
     pub scanline_ordering: ScanlineOrdering,
 }
 
-#[derive(Debug, FromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive)]
 #[repr(u16)]
 pub enum VideoSignalStandard {
     Uninitialized,
@@ -97,14 +97,14 @@ pub enum VideoSignalStandard {
     Other(u16),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct SourceMode {
     pub size: (u32, u32),
     pub pixel_format: PixelFormat,
     pub position: (i32, i32),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default, Copy, Clone, PartialEq)]
 pub struct PathSourceInfo {
     pub id: DisplayId,
     // TODO: the high 16 bits are the "clone group ID"
@@ -112,7 +112,7 @@ pub struct PathSourceInfo {
     pub status_flags: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct PathTargetInfo {
     pub id: DisplayId,
     pub mode_info_idx: u32,
@@ -125,7 +125,7 @@ pub struct PathTargetInfo {
     pub status_flags: u32,
 }
 
-#[derive(Debug, FromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive)]
 #[repr(u32)]
 pub enum ScanlineOrdering {
     Unspecified = 0,
@@ -137,7 +137,7 @@ pub enum ScanlineOrdering {
 }
 
 #[repr(u32)]
-#[derive(Debug, FromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive)]
 pub enum VideoOutputTechnology {
     Hd15 = 0,
     Svideo = 1,
@@ -162,27 +162,29 @@ pub enum VideoOutputTechnology {
     Other(u32),
 }
 
-#[derive(Debug, FromPrimitive)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, FromPrimitive)]
 #[repr(u32)]
 pub enum Rotation {
-    #[num_enum(default)]
+    #[default]
     Identity = 1,
     Rotate90 = 2,
     Rotate180 = 3,
     Rotate270 = 4,
 }
 
-#[derive(Debug, FromPrimitive)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, FromPrimitive)]
 #[repr(u32)]
 pub enum Scaling {
-    #[num_enum(default)]
+    #[default]
     Identity = 1,
-    Rotate90 = 2,
-    Rotate180 = 3,
-    Rotate270 = 4,
+    Centered = 2,
+    Stretched = 3,
+    AspectRatioCenteredMax = 4,
+    Custom = 5,
+    Preferred = 128,
 }
 
-#[derive(Debug, FromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive)]
 #[repr(u32)]
 pub enum PixelFormat {
     Bpp8 = 1,
@@ -194,7 +196,7 @@ pub enum PixelFormat {
     Other(u32),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default, Copy, Clone, PartialEq)]
 pub struct DesktopImageInfo {
     pub path_source_size: (i32, i32),
     pub region: RECTL,
@@ -309,8 +311,8 @@ impl From<d::DISPLAYCONFIG_MODE_INFO> for DisplayModeInfo {
                 ModeInfo::Source(raw_inner.into())
             }
             d::DISPLAYCONFIG_MODE_INFO_TYPE_DESKTOP_IMAGE => {
-                let _raw_inner = unsafe { raw.Anonymous.desktopImageInfo };
-                ModeInfo::DesktopImage()
+                let raw_inner = unsafe { raw.Anonymous.desktopImageInfo };
+                ModeInfo::DesktopImage(raw_inner.into())
             }
             _ => panic!(),
         };
@@ -375,6 +377,18 @@ enums! {
     Rotation => DISPLAYCONFIG_ROTATION,
     Scaling => DISPLAYCONFIG_SCALING,
     PixelFormat => DISPLAYCONFIG_PIXELFORMAT,
+}
+
+impl Default for VideoSignalStandard {
+    fn default() -> Self {
+        Self::Uninitialized
+    }
+}
+
+impl Default for ScanlineOrdering {
+    fn default() -> Self {
+        Self::Unspecified
+    }
 }
 
 fn rational(raw: d::DISPLAYCONFIG_RATIONAL) -> Rational {

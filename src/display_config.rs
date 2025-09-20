@@ -9,7 +9,7 @@ use windows::core::Result;
 pub mod query;
 pub mod set;
 
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone, PartialEq)]
 pub struct DisplayId {
     pub adapter: LUID,
     pub id: u32,
@@ -45,10 +45,10 @@ impl std::fmt::Debug for DisplayId {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SourceDeviceName(pub String);
 
-#[derive(Debug)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct TargetDeviceName {
     pub friendly_device_name: String,
     pub device_path: String,
