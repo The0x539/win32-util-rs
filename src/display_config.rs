@@ -9,6 +9,7 @@ use windows::core::Result;
 pub mod query;
 pub mod set;
 
+/// A pair of values that often show up together in the Win32 structures that this module abstracts.
 #[derive(Default, Copy, Clone, PartialEq)]
 pub struct DisplayId {
     pub adapter: LUID,
@@ -16,6 +17,7 @@ pub struct DisplayId {
 }
 
 impl DisplayId {
+    /// [DisplayConfigGetDeviceInfo function (winuser.h)](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-displayconfiggetdeviceinfo)
     pub fn get_device_info<T: GetDeviceInfo>(&self) -> Result<T> {
         let header = DeviceInfoHeader {
             r#type: T::PACKET_TYPE,
@@ -45,15 +47,18 @@ impl std::fmt::Debug for DisplayId {
     }
 }
 
+/// [DISPLAYCONFIG_SOURCE_DEVICE_NAME structure (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_source_device_name>)
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SourceDeviceName(pub String);
 
+/// [DISPLAYCONFIG_TARGET_DEVICE_NAME structure (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_target_device_name)
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct TargetDeviceName {
     pub friendly_device_name: String,
     pub device_path: String,
 }
 
+/// [DISPLAYCONFIG_DEVICE_INFO_TYPE enumeration (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ne-wingdi-displayconfig_device_info_type)
 pub unsafe trait GetDeviceInfo {
     type Packet: DeviceInfoPacket;
     const PACKET_TYPE: DeviceInfoType;
@@ -97,6 +102,7 @@ get_device_info! {
     }
 }
 
+/// [DISPLAYCONFIG_DEVICE_INFO_HEADER structure (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_device_info_header)
 pub unsafe trait DeviceInfoPacket {
     fn from_header(header: DeviceInfoHeader) -> Self;
 }

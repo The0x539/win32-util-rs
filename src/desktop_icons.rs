@@ -4,6 +4,7 @@ use windows::core::{Interface, Result};
 
 const NO_ICONS: u32 = shell::FWF_NOICONS.0 as u32;
 
+/// Abstraction over [IFolderView2::SetCurrentFolderFlags](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-ifolderview2-setcurrentfolderflags) with the [NO_ICONS flag](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/ne-shobjidl_core-folderflags).
 pub fn set_hidden(hide: bool) -> Result<()> {
     let flags = if hide { NO_ICONS } else { 0 };
     unsafe { desktop()?.SetCurrentFolderFlags(NO_ICONS, flags) }

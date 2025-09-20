@@ -1,19 +1,25 @@
+//! [QueryDisplayConfig function (winuser.h)](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-querydisplayconfig)
+
 use crate::win::display as d;
 use num_enum::FromPrimitive;
 use windows::{Win32::Foundation::RECTL, core::Result};
 
 use super::DisplayId;
 
+/// [DISPLAYCONFIG_RATIONAL structure (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_rational)
 pub type Rational = num_rational::Ratio<u32>;
 
+/// Calls [QueryDisplayConfig](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-querydisplayconfig) using QDC_ALL_PATHS.
 pub fn all_paths() -> Result<DisplayConfig> {
     query(d::QDC_ALL_PATHS, None)
 }
 
+/// Calls [QueryDisplayConfig](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-querydisplayconfig) using QDC_ONLY_ACTIVE_PATHS.
 pub fn active_paths() -> Result<DisplayConfig> {
     query(d::QDC_ONLY_ACTIVE_PATHS, None)
 }
 
+/// Calls [QueryDisplayConfig](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-querydisplayconfig) using QDC_DATABASE_CURRENT.
 pub fn database_current() -> Result<(DisplayConfig, d::DISPLAYCONFIG_TOPOLOGY_ID)> {
     let mut id = Default::default();
     let config = query(d::QDC_DATABASE_CURRENT, Some(&mut id))?;
@@ -26,6 +32,7 @@ pub struct DisplayConfig {
     pub modes: Vec<DisplayModeInfo>,
 }
 
+/// [DISPLAYCONFIG_PATH_INFO structure (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_path_info)
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct PathInfo {
     pub source: PathSourceInfo,
@@ -33,12 +40,14 @@ pub struct PathInfo {
     pub flags: u32,
 }
 
+/// [DISPLAYCONFIG_MODE_INFO structure (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_mode_info)
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct DisplayModeInfo {
     pub id: DisplayId,
     pub mode: ModeInfo,
 }
 
+/// [DISPLAYCONFIG_MODE_INFO structure (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_mode_info)
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum ModeInfo {
     Target(VideoSignalInfo),
@@ -46,6 +55,7 @@ pub enum ModeInfo {
     DesktopImage(DesktopImageInfo),
 }
 
+/// [DISPLAYCONFIG_VIDEO_SIGNAL_INFO structure (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_video_signal_info)
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct VideoSignalInfo {
     pub pixel_rate: u64,
@@ -58,6 +68,7 @@ pub struct VideoSignalInfo {
     pub scanline_ordering: ScanlineOrdering,
 }
 
+/// [D3DKMDT_VIDEO_SIGNAL_STANDARD enumeration (d3dkmdt.h)](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmdt/ne-d3dkmdt-_d3dkmdt_video_signal_standard)
 #[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive)]
 #[repr(u16)]
 pub enum VideoSignalStandard {
@@ -97,6 +108,7 @@ pub enum VideoSignalStandard {
     Other(u16),
 }
 
+/// [DISPLAYCONFIG_SOURCE_MODE structure (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_source_mode)
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct SourceMode {
     pub size: (u32, u32),
@@ -104,6 +116,7 @@ pub struct SourceMode {
     pub position: (i32, i32),
 }
 
+/// [DISPLAYCONFIG_PATH_SOURCE_INFO structure (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_path_source_info)
 #[derive(Debug, Default, Copy, Clone, PartialEq)]
 pub struct PathSourceInfo {
     pub id: DisplayId,
@@ -112,6 +125,7 @@ pub struct PathSourceInfo {
     pub status_flags: u32,
 }
 
+/// [DISPLAYCONFIG_PATH_TARGET_INFO structure (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_path_target_info)
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct PathTargetInfo {
     pub id: DisplayId,
@@ -125,6 +139,7 @@ pub struct PathTargetInfo {
     pub status_flags: u32,
 }
 
+/// [DISPLAYCONFIG_SCANLINE_ORDERING enumeration (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ne-wingdi-displayconfig_scanline_ordering)
 #[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive)]
 #[repr(u32)]
 pub enum ScanlineOrdering {
@@ -136,6 +151,7 @@ pub enum ScanlineOrdering {
     Other(u32),
 }
 
+/// [DISPLAYCONFIG_VIDEO_OUTPUT_TECHNOLOGY enumeration (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ne-wingdi-displayconfig_video_output_technology)
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive)]
 pub enum VideoOutputTechnology {
@@ -162,6 +178,7 @@ pub enum VideoOutputTechnology {
     Other(u32),
 }
 
+/// [DISPLAYCONFIG_ROTATION enumeration (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ne-wingdi-displayconfig_rotation)
 #[derive(Debug, Default, Copy, Clone, PartialEq, FromPrimitive)]
 #[repr(u32)]
 pub enum Rotation {
@@ -172,6 +189,7 @@ pub enum Rotation {
     Rotate270 = 4,
 }
 
+/// [DISPLAYCONFIG_SCALING enumeration (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ne-wingdi-displayconfig_scaling)
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, FromPrimitive)]
 #[repr(u32)]
 pub enum Scaling {
@@ -184,6 +202,7 @@ pub enum Scaling {
     Preferred = 128,
 }
 
+/// [DISPLAYCONFIG_PIXELFORMAT enumeration (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ne-wingdi-displayconfig_pixelformat)
 #[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive)]
 #[repr(u32)]
 pub enum PixelFormat {
@@ -196,6 +215,7 @@ pub enum PixelFormat {
     Other(u32),
 }
 
+/// [DISPLAYCONFIG_DESKTOP_IMAGE_INFO structure (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_desktop_image_info)
 #[derive(Debug, Default, Copy, Clone, PartialEq)]
 pub struct DesktopImageInfo {
     pub path_source_size: (i32, i32),

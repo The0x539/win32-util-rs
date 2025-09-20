@@ -4,6 +4,7 @@ use windows::core::{GUID, IUnknown, Interface, Result};
 
 pub(crate) use crate::win::com::*;
 
+/// [CoCreateInstance function (combaseapi.h)](https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-cocreateinstance)
 pub fn create<T: Interface>(iid: GUID) -> Result<T> {
     thread_local! {
         static INIT: Once = Once::new();
