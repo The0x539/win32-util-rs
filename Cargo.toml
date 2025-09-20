@@ -1,0 +1,22 @@
+[package]
+name = "win32-util"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+[dependencies.windows]
+version = "0.62"
+
+[features]
+default = ["desktop-icons"]
+
+# windows-rs feature "aliases"/"re-exports"
+win-com = ["windows/Win32_System_Com"]
+win-ole = ["windows/Win32_System_Ole"]
+win-shell = ["windows/Win32_UI_Shell"]
+win-variant = ["win-ole", "windows/Win32_System_Variant"]
+
+# actual crate features
+com = ["win-com"]
+desktop-icons = ["com", "win-variant", "win-shell"]
