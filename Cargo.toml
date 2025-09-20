@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+num-rational = { version = "0.4.2", optional = true }
+num_enum = { version = "0.7.4", optional = true }
 
 [dependencies.windows]
 version = "0.62"
@@ -20,7 +22,7 @@ win-display = ["windows/Win32_Devices_Display"]
 # actual crate features
 com = ["win-com"]
 desktop-icons = ["com", "win-variant", "win-shell"]
-display-config = ["win-display"]
+display-config = ["win-display", "dep:num-rational", "dep:num_enum"]
 
 [[example]]
 name = "query_display_config"
