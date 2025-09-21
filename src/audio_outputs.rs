@@ -91,8 +91,18 @@ impl AudioDevice {
         }
     }
 
+    pub fn find_by_name(name: &str) -> Result<Option<Self>> {
+        for device in Self::enumerate(EndpointDataFlow::Render, DeviceStateMask::ACTIVE)? {
+            let device = device?;
+            if device.short_name()? == name {
+                return Ok(Some(device));
+            }
+        }
+        Ok(None)
+    }
+
     /// [IMMDeviceEnumerator::GetDevice method (mmdeviceapi.h)](https://learn.microsoft.com/en-us/windows/win32/api/mmdeviceapi/nf-mmdeviceapi-immdeviceenumerator-getdevice)
-    pub fn find(id: impl Into<HSTRING>) -> Result<Self> {
+    pub fn by_id(id: impl Into<HSTRING>) -> Result<Self> {
         let id = id.into();
         unsafe { enumerator()?.GetDevice(&id).map(Self) }
     }

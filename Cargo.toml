@@ -1,6 +1,6 @@
 [package]
 name = "win32-util"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "GPL-3.0-only"
 description = "High-level idiomatic bindings for a few parts of the Win32 API"
