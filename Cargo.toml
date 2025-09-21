@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 num-rational = { version = "0.4.2", optional = true }
 num_enum = { version = "0.7.4", optional = true }
+bitflags = { version = "2.9.4", optional = true }
 
 # needed as a direct dependency by #[interface] for some annoying reason
 windows-core = { version = "*", optional = true }
@@ -24,6 +25,7 @@ win-display = ["windows/Win32_Devices_Display"]
 win-audio = ["windows/Win32_Media_Audio"]
 win-com-storage = ["windows/Win32_System_Com_StructuredStorage"]
 win-shell-properties = ["windows/Win32_UI_Shell_PropertiesSystem"]
+win-device-properties = ["windows/Win32_Devices_Properties"]
 
 # actual crate features
 com = ["win-com"]
@@ -32,10 +34,13 @@ display-config = ["win-display", "dep:num-rational", "dep:num_enum"]
 audio-outputs = [
   "com",
   "dep:windows-core",
+  "dep:bitflags",
+  "dep:num_enum",
   "win-audio",
   "win-variant",
   "win-com-storage",        # needed for PROPVARIANT
   "win-shell-properties",   # needed for IMMDevice::OpenPropertyStore
+  "win-device-properties",
   "windows/Devices_Custom",
 ]
 

@@ -14,6 +14,8 @@ pub mod audio_outputs;
 pub mod win {
     #[cfg(feature = "win-display")]
     pub use windows::Win32::Devices::Display as display;
+    #[cfg(feature = "win-device-properties")]
+    pub use windows::Win32::Devices::Properties as properties;
     #[cfg(feature = "win-audio")]
     pub use windows::Win32::Media::Audio as audio;
     #[cfg(feature = "win-com")]
