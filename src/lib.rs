@@ -7,12 +7,19 @@ pub mod desktop_icons;
 #[cfg(feature = "display-config")]
 pub mod display_config;
 
+#[cfg(feature = "audio-outputs")]
+pub mod audio_outputs;
+
 /// Re-exported modules from the windows crate with more useful naming.
 pub mod win {
     #[cfg(feature = "win-display")]
     pub use windows::Win32::Devices::Display as display;
+    #[cfg(feature = "win-audio")]
+    pub use windows::Win32::Media::Audio as audio;
     #[cfg(feature = "win-com")]
     pub use windows::Win32::System::Com as com;
+    #[cfg(feature = "win-com-storage")]
+    pub use windows::Win32::System::Com::StructuredStorage as com_storage;
     #[cfg(feature = "win-ole")]
     pub use windows::Win32::System::Ole as ole;
     #[cfg(feature = "win-variant")]

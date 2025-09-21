@@ -204,6 +204,7 @@ dependencies = [
  "num-rational",
  "num_enum",
  "windows",
+ "windows-core",
 ]
 
 [[package]]
