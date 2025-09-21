@@ -10,7 +10,6 @@ readme = "README.md"
 
 [package.metadata.docs.rs]
 all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 num-rational = { version = "0.4.2", optional = true }
@@ -18,7 +17,7 @@ num_enum = { version = "0.7.4", optional = true }
 bitflags = { version = "2.9.4", optional = true }
 
 # needed as a direct dependency by #[interface] for some annoying reason
-windows-core = { version = "*", optional = true }
+windows-core = { version = "0.62", optional = true }
 
 [dependencies.windows]
 version = "0.62"
