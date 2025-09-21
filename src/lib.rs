@@ -1,3 +1,5 @@
+#![cfg_attr(doc, feature(doc_auto_cfg))]
+
 #[cfg(feature = "com")]
 pub mod com;
 
@@ -32,3 +34,17 @@ pub mod win {
 
 pub use windows;
 pub use windows::core as windows_core;
+
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+pub struct ReadmeDoctests;
+
+#[cfg(all(
+    test,
+    not(all(
+        feature = "audio-outputs",
+        feature = "display-config",
+        feature = "desktop-icons"
+    ))
+))]
+compile_error!("tests must be run with --all-features");
