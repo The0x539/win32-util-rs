@@ -7,7 +7,7 @@ and wishing there were nicer-to-use bindings. Well, now there are. I think.
 ```rust
 use windows::core::Result;
 use win32_util::audio_outputs::{AudioDevice, EndpointRole, EndpointDataFlow, DeviceStateMask};
-use win32_util::display_config::{DisplayConfig, set::Topology};
+use win32_util::display_config::{DisplayConfig, Topology};
 
 fn main() -> Result<()> {
     // Audio output devices

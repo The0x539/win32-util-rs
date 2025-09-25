@@ -6,7 +6,7 @@ use crate::win::display as d;
 use bitflags::bitflags;
 use windows::core::Result;
 
-use super::config_types::{DisplayConfig, RawDisplayConfig};
+use super::{DisplayConfig, RawDisplayConfig, Topology};
 
 impl DisplayConfig {
     /// Calls [QueryDisplayConfig](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-querydisplayconfig) using QDC_ALL_PATHS.
@@ -20,10 +20,10 @@ impl DisplayConfig {
     }
 
     /// Calls [QueryDisplayConfig](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-querydisplayconfig) using QDC_DATABASE_CURRENT.
-    pub fn database_current(flags: QueryFlags) -> Result<(Self, d::DISPLAYCONFIG_TOPOLOGY_ID)> {
-        let mut id = Default::default();
+    pub fn database_current(flags: QueryFlags) -> Result<(Self, Topology)> {
+        let mut id = d::DISPLAYCONFIG_TOPOLOGY_ID::default();
         let config = query(flags | d::QDC_DATABASE_CURRENT, Some(&mut id))?;
-        Ok((config, id))
+        Ok((config, id.into()))
     }
 }
 

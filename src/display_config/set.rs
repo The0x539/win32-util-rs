@@ -4,15 +4,7 @@ use crate::win::display as d;
 use bitflags::bitflags;
 use windows::{Win32::Foundation::WIN32_ERROR, core::Result};
 
-use super::DisplayConfig;
-
-#[repr(u32)]
-pub enum Topology {
-    Primary = d::SDC_TOPOLOGY_INTERNAL.0,
-    Clone = d::SDC_TOPOLOGY_CLONE.0,
-    Extend = d::SDC_TOPOLOGY_EXTEND.0,
-    Secondary = d::SDC_TOPOLOGY_EXTERNAL.0,
-}
+use super::{DisplayConfig, Topology};
 
 bitflags! {
     pub struct ValidateFlags: u32 {
