@@ -1,8 +1,9 @@
 //! [QueryDisplayConfig function (winuser.h)](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-querydisplayconfig)
 
+use crate::geometry::{Len2, Pos2, Rect, Xywh};
 use crate::win::display as d;
 use num_enum::FromPrimitive;
-use windows::{Win32::Foundation::RECTL, core::Result};
+use windows::core::Result;
 
 use super::DisplayId;
 
@@ -61,8 +62,8 @@ pub struct VideoSignalInfo {
     pub pixel_rate: u64,
     pub h_sync_freq: Rational,
     pub v_sync_freq: Rational,
-    pub active_size: (u32, u32),
-    pub total_size: (u32, u32),
+    pub active_size: Len2<u32>,
+    pub total_size: Len2<u32>,
     pub video_standard: VideoSignalStandard,
     pub vsync_freq_divider: u8,
     pub scanline_ordering: ScanlineOrdering,
@@ -111,9 +112,8 @@ pub enum VideoSignalStandard {
 /// [DISPLAYCONFIG_SOURCE_MODE structure (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_source_mode)
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct SourceMode {
-    pub size: (u32, u32),
+    pub location: Rect<i32, u32, Xywh>,
     pub pixel_format: PixelFormat,
-    pub position: (i32, i32),
 }
 
 /// [DISPLAYCONFIG_PATH_SOURCE_INFO structure (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_path_source_info)
@@ -218,9 +218,9 @@ pub enum PixelFormat {
 /// [DISPLAYCONFIG_DESKTOP_IMAGE_INFO structure (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_desktop_image_info)
 #[derive(Debug, Default, Copy, Clone, PartialEq)]
 pub struct DesktopImageInfo {
-    pub path_source_size: (i32, i32),
-    pub region: RECTL,
-    pub clip: RECTL,
+    pub path_source_size: Len2<i32>,
+    pub region: Rect<i32>,
+    pub clip: Rect<i32>,
 }
 
 // TODO: the mode_info_idx stuff briefly described above, with the stupid bitfield
@@ -352,8 +352,8 @@ impl From<d::DISPLAYCONFIG_VIDEO_SIGNAL_INFO> for VideoSignalInfo {
             pixel_rate: raw.pixelRate,
             h_sync_freq: rational(raw.hSyncFreq),
             v_sync_freq: rational(raw.vSyncFreq),
-            active_size: (raw.activeSize.cx, raw.activeSize.cy),
-            total_size: (raw.totalSize.cx, raw.totalSize.cy),
+            active_size: raw.activeSize.into(),
+            total_size: raw.totalSize.into(),
             video_standard,
             vsync_freq_divider,
             scanline_ordering: raw.scanLineOrdering.into(),
@@ -363,10 +363,11 @@ impl From<d::DISPLAYCONFIG_VIDEO_SIGNAL_INFO> for VideoSignalInfo {
 
 impl From<d::DISPLAYCONFIG_SOURCE_MODE> for SourceMode {
     fn from(raw: d::DISPLAYCONFIG_SOURCE_MODE) -> Self {
+        let pos = raw.position.into();
+        let size = (raw.width, raw.height).into();
         Self {
-            size: (raw.width, raw.height),
+            location: Rect::from_pos_size(pos, size),
             pixel_format: raw.pixelFormat.into(),
-            position: (raw.position.x, raw.position.y),
         }
     }
 }
@@ -374,9 +375,9 @@ impl From<d::DISPLAYCONFIG_SOURCE_MODE> for SourceMode {
 impl From<d::DISPLAYCONFIG_DESKTOP_IMAGE_INFO> for DesktopImageInfo {
     fn from(raw: d::DISPLAYCONFIG_DESKTOP_IMAGE_INFO) -> Self {
         Self {
-            path_source_size: (raw.PathSourceSize.x, raw.PathSourceSize.y),
-            region: raw.DesktopImageRegion,
-            clip: raw.DesktopImageClip,
+            path_source_size: Pos2::from(raw.PathSourceSize).cast_kind(),
+            region: raw.DesktopImageRegion.into(),
+            clip: raw.DesktopImageClip.into(),
         }
     }
 }

@@ -35,6 +35,9 @@ pub mod win {
 pub use windows;
 pub use windows::core as windows_core;
 
+#[cfg(feature = "geometry")]
+pub mod geometry;
+
 #[cfg(doctest)]
 #[doc = include_str!("../README.md")]
 pub struct ReadmeDoctests;

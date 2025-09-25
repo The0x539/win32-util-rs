@@ -40,8 +40,9 @@ win-device-properties = ["windows/Win32_Devices_Properties"]
 
 # actual crate features
 com = ["win-com"]
+geometry = ["windows/Win32_Foundation"]
 desktop-icons = ["com", "win-variant", "win-shell"]
-display-config = ["win-display", "dep:num-rational", "dep:num_enum"]
+display-config = ["geometry", "win-display", "dep:num-rational", "dep:num_enum"]
 audio-outputs = [
   "com",
   "dep:windows-core",
