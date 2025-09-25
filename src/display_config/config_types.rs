@@ -1,5 +1,5 @@
 use crate::win::display as d;
-use num_enum::FromPrimitive;
+use num_enum::{FromPrimitive, IntoPrimitive};
 
 use super::DisplayId;
 use crate::geometry::{Len2, Pos2, Rect, Xywh};
@@ -20,9 +20,18 @@ pub struct DisplayConfig {
 
 impl From<RawDisplayConfig> for DisplayConfig {
     fn from(raw: RawDisplayConfig) -> Self {
-        DisplayConfig {
+        Self {
             paths: raw.paths.into_iter().map(From::from).collect(),
             modes: raw.modes.into_iter().map(From::from).collect(),
+        }
+    }
+}
+
+impl From<DisplayConfig> for RawDisplayConfig {
+    fn from(value: DisplayConfig) -> Self {
+        Self {
+            paths: value.paths.into_iter().map(From::from).collect(),
+            modes: value.modes.into_iter().map(From::from).collect(),
         }
     }
 }
@@ -45,6 +54,16 @@ impl From<d::DISPLAYCONFIG_PATH_INFO> for PathInfo {
     }
 }
 
+impl From<PathInfo> for d::DISPLAYCONFIG_PATH_INFO {
+    fn from(value: PathInfo) -> Self {
+        Self {
+            sourceInfo: value.source.into(),
+            targetInfo: value.target.into(),
+            flags: value.flags,
+        }
+    }
+}
+
 /// [DISPLAYCONFIG_PATH_SOURCE_INFO structure (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_path_source_info)
 #[derive(Debug, Default, Copy, Clone, PartialEq)]
 pub struct PathSourceInfo {
@@ -63,6 +82,19 @@ impl From<d::DISPLAYCONFIG_PATH_SOURCE_INFO> for PathSourceInfo {
             },
             mode_info_idx: unsafe { raw.Anonymous.modeInfoIdx },
             status_flags: raw.statusFlags,
+        }
+    }
+}
+
+impl From<PathSourceInfo> for d::DISPLAYCONFIG_PATH_SOURCE_INFO {
+    fn from(value: PathSourceInfo) -> Self {
+        Self {
+            adapterId: value.id.adapter,
+            id: value.id.id,
+            Anonymous: d::DISPLAYCONFIG_PATH_SOURCE_INFO_0 {
+                modeInfoIdx: value.mode_info_idx,
+            },
+            statusFlags: value.status_flags,
         }
     }
 }
@@ -95,10 +127,29 @@ impl From<d::DISPLAYCONFIG_PATH_TARGET_INFO> for PathTargetInfo {
             output_technology: raw.outputTechnology.into(),
             rotation: raw.rotation.into(),
             scaling: raw.scaling.into(),
-            refresh_rate: rational(raw.refreshRate),
+            refresh_rate: raw.refreshRate.convert(),
             scanline_ordering: raw.scanLineOrdering.into(),
             target_available: raw.targetAvailable.into(),
             status_flags: raw.statusFlags,
+        }
+    }
+}
+
+impl From<PathTargetInfo> for d::DISPLAYCONFIG_PATH_TARGET_INFO {
+    fn from(value: PathTargetInfo) -> Self {
+        Self {
+            adapterId: value.id.adapter,
+            id: value.id.id,
+            Anonymous: d::DISPLAYCONFIG_PATH_TARGET_INFO_0 {
+                modeInfoIdx: value.mode_info_idx,
+            },
+            outputTechnology: value.output_technology.into(),
+            rotation: value.rotation.into(),
+            scaling: value.scaling.into(),
+            refreshRate: value.refresh_rate.convert(),
+            scanLineOrdering: value.scanline_ordering.into(),
+            targetAvailable: value.target_available.into(),
+            statusFlags: value.status_flags.into(),
         }
     }
 }
@@ -135,6 +186,28 @@ impl From<d::DISPLAYCONFIG_MODE_INFO> for DisplayModeInfo {
     }
 }
 
+impl From<DisplayModeInfo> for d::DISPLAYCONFIG_MODE_INFO {
+    fn from(value: DisplayModeInfo) -> Self {
+        let info_type = match &value.mode {
+            ModeInfo::Target(_) => d::DISPLAYCONFIG_MODE_INFO_TYPE_TARGET,
+            ModeInfo::Source(_) => d::DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE,
+            ModeInfo::DesktopImage(_) => d::DISPLAYCONFIG_MODE_INFO_TYPE_DESKTOP_IMAGE,
+        };
+        let mut info = d::DISPLAYCONFIG_MODE_INFO_0::default();
+        match value.mode {
+            ModeInfo::Target(target) => info.targetMode = target.into(),
+            ModeInfo::Source(source) => info.sourceMode = source.into(),
+            ModeInfo::DesktopImage(image) => info.desktopImageInfo = image.into(),
+        }
+        Self {
+            infoType: info_type,
+            id: value.id.id,
+            adapterId: value.id.adapter,
+            Anonymous: info,
+        }
+    }
+}
+
 /// [DISPLAYCONFIG_MODE_INFO structure (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_mode_info)
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum ModeInfo {
@@ -166,13 +239,46 @@ impl From<d::DISPLAYCONFIG_VIDEO_SIGNAL_INFO> for VideoSignalInfo {
         };
         Self {
             pixel_rate: raw.pixelRate,
-            h_sync_freq: rational(raw.hSyncFreq),
-            v_sync_freq: rational(raw.vSyncFreq),
+            h_sync_freq: raw.hSyncFreq.convert(),
+            v_sync_freq: raw.vSyncFreq.convert(),
             active_size: raw.activeSize.into(),
             total_size: raw.totalSize.into(),
             video_standard,
             vsync_freq_divider,
             scanline_ordering: raw.scanLineOrdering.into(),
+        }
+    }
+}
+
+impl From<d::DISPLAYCONFIG_TARGET_MODE> for VideoSignalInfo {
+    fn from(raw: d::DISPLAYCONFIG_TARGET_MODE) -> Self {
+        raw.targetVideoSignalInfo.into()
+    }
+}
+
+impl From<VideoSignalInfo> for d::DISPLAYCONFIG_VIDEO_SIGNAL_INFO {
+    fn from(value: VideoSignalInfo) -> Self {
+        let video_standard = u32::from(u16::from(value.video_standard));
+        let vsync_freq_divider = u32::from(value.vsync_freq_divider);
+        let additional_signal_info = video_standard | (vsync_freq_divider << 16);
+        Self {
+            pixelRate: value.pixel_rate,
+            hSyncFreq: value.h_sync_freq.convert(),
+            vSyncFreq: value.v_sync_freq.convert(),
+            activeSize: value.active_size.into(),
+            totalSize: value.total_size.into(),
+            Anonymous: d::DISPLAYCONFIG_VIDEO_SIGNAL_INFO_0 {
+                videoStandard: additional_signal_info,
+            },
+            scanLineOrdering: value.scanline_ordering.into(),
+        }
+    }
+}
+
+impl From<VideoSignalInfo> for d::DISPLAYCONFIG_TARGET_MODE {
+    fn from(value: VideoSignalInfo) -> Self {
+        Self {
+            targetVideoSignalInfo: value.into(),
         }
     }
 }
@@ -195,6 +301,18 @@ impl From<d::DISPLAYCONFIG_SOURCE_MODE> for SourceMode {
     }
 }
 
+impl From<SourceMode> for d::DISPLAYCONFIG_SOURCE_MODE {
+    fn from(value: SourceMode) -> Self {
+        let (width, height) = value.location.size().into();
+        Self {
+            width,
+            height,
+            pixelFormat: value.pixel_format.into(),
+            position: value.location.top_left().into(),
+        }
+    }
+}
+
 /// [DISPLAYCONFIG_DESKTOP_IMAGE_INFO structure (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_desktop_image_info)
 #[derive(Debug, Default, Copy, Clone, PartialEq)]
 pub struct DesktopImageInfo {
@@ -213,9 +331,19 @@ impl From<d::DISPLAYCONFIG_DESKTOP_IMAGE_INFO> for DesktopImageInfo {
     }
 }
 
+impl From<DesktopImageInfo> for d::DISPLAYCONFIG_DESKTOP_IMAGE_INFO {
+    fn from(value: DesktopImageInfo) -> Self {
+        Self {
+            PathSourceSize: value.path_source_size.cast_kind().into(),
+            DesktopImageRegion: value.region.into(),
+            DesktopImageClip: value.clip.into(),
+        }
+    }
+}
+
 /// [DISPLAYCONFIG_VIDEO_OUTPUT_TECHNOLOGY enumeration (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ne-wingdi-displayconfig_video_output_technology)
+#[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 #[repr(u32)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive)]
 pub enum VideoOutputTechnology {
     Hd15 = 0,
     Svideo = 1,
@@ -241,7 +369,7 @@ pub enum VideoOutputTechnology {
 }
 
 /// [DISPLAYCONFIG_ROTATION enumeration (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ne-wingdi-displayconfig_rotation)
-#[derive(Debug, Default, Copy, Clone, PartialEq, FromPrimitive)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, FromPrimitive, IntoPrimitive)]
 #[repr(u32)]
 pub enum Rotation {
     #[default]
@@ -252,7 +380,7 @@ pub enum Rotation {
 }
 
 /// [DISPLAYCONFIG_SCALING enumeration (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ne-wingdi-displayconfig_scaling)
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, FromPrimitive)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 #[repr(u32)]
 pub enum Scaling {
     #[default]
@@ -265,7 +393,7 @@ pub enum Scaling {
 }
 
 /// [DISPLAYCONFIG_SCANLINE_ORDERING enumeration (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ne-wingdi-displayconfig_scanline_ordering)
-#[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 #[repr(u32)]
 pub enum ScanlineOrdering {
     Unspecified = 0,
@@ -277,7 +405,7 @@ pub enum ScanlineOrdering {
 }
 
 /// [D3DKMDT_VIDEO_SIGNAL_STANDARD enumeration (d3dkmdt.h)](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmdt/ne-d3dkmdt-_d3dkmdt_video_signal_standard)
-#[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 #[repr(u16)]
 pub enum VideoSignalStandard {
     Uninitialized,
@@ -317,7 +445,7 @@ pub enum VideoSignalStandard {
 }
 
 /// [DISPLAYCONFIG_PIXELFORMAT enumeration (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ne-wingdi-displayconfig_pixelformat)
-#[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 #[repr(u32)]
 pub enum PixelFormat {
     Bpp8 = 1,
@@ -334,6 +462,12 @@ macro_rules! enums {
         impl From<d::$raw> for $rust {
             fn from(raw: d::$raw) -> Self {
                 Self::from(raw.0 as u32)
+            }
+        }
+
+        impl From<$rust> for d::$raw {
+            fn from(value: $rust) -> Self {
+                Self(u32::from(value) as i32)
             }
         }
     )*}
@@ -361,6 +495,21 @@ impl Default for ScanlineOrdering {
     }
 }
 
-fn rational(raw: d::DISPLAYCONFIG_RATIONAL) -> Rational {
-    Rational::new_raw(raw.Numerator, raw.Denominator)
+trait Convert<T> {
+    fn convert(self) -> T;
+}
+
+impl Convert<Rational> for d::DISPLAYCONFIG_RATIONAL {
+    fn convert(self) -> Rational {
+        Rational::new_raw(self.Numerator, self.Denominator)
+    }
+}
+
+impl Convert<d::DISPLAYCONFIG_RATIONAL> for Rational {
+    fn convert(self) -> d::DISPLAYCONFIG_RATIONAL {
+        d::DISPLAYCONFIG_RATIONAL {
+            Numerator: *self.numer(),
+            Denominator: *self.denom(),
+        }
+    }
 }
