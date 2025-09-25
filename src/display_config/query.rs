@@ -5,21 +5,23 @@ use windows::core::Result;
 
 use super::config_types::{DisplayConfig, RawDisplayConfig};
 
-/// Calls [QueryDisplayConfig](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-querydisplayconfig) using QDC_ALL_PATHS.
-pub fn all_paths() -> Result<DisplayConfig> {
-    query(d::QDC_ALL_PATHS, None)
-}
+impl DisplayConfig {
+    /// Calls [QueryDisplayConfig](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-querydisplayconfig) using QDC_ALL_PATHS.
+    pub fn all_paths() -> Result<Self> {
+        query(d::QDC_ALL_PATHS, None)
+    }
 
-/// Calls [QueryDisplayConfig](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-querydisplayconfig) using QDC_ONLY_ACTIVE_PATHS.
-pub fn active_paths() -> Result<DisplayConfig> {
-    query(d::QDC_ONLY_ACTIVE_PATHS, None)
-}
+    /// Calls [QueryDisplayConfig](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-querydisplayconfig) using QDC_ONLY_ACTIVE_PATHS.
+    pub fn active_paths() -> Result<Self> {
+        query(d::QDC_ONLY_ACTIVE_PATHS, None)
+    }
 
-/// Calls [QueryDisplayConfig](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-querydisplayconfig) using QDC_DATABASE_CURRENT.
-pub fn database_current() -> Result<(DisplayConfig, d::DISPLAYCONFIG_TOPOLOGY_ID)> {
-    let mut id = Default::default();
-    let config = query(d::QDC_DATABASE_CURRENT, Some(&mut id))?;
-    Ok((config, id))
+    /// Calls [QueryDisplayConfig](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-querydisplayconfig) using QDC_DATABASE_CURRENT.
+    pub fn database_current() -> Result<(Self, d::DISPLAYCONFIG_TOPOLOGY_ID)> {
+        let mut id = Default::default();
+        let config = query(d::QDC_DATABASE_CURRENT, Some(&mut id))?;
+        Ok((config, id))
+    }
 }
 
 fn query(

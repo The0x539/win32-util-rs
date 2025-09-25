@@ -1,5 +1,7 @@
+use win32_util::display_config::DisplayConfig;
+
 fn main() {
-    let dc = win32_util::display_config::query::active_paths().unwrap();
+    let dc = DisplayConfig::active_paths().unwrap();
     println!("paths:");
     for path in dc.paths {
         println!("\t- source: {:?}", path.source);

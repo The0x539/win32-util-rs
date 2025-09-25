@@ -6,11 +6,12 @@ use display::{
 use windows::Win32::Foundation::{LUID, WIN32_ERROR};
 use windows::core::Result;
 
-pub mod query;
+mod query;
 pub mod set;
 
 /// Types corresponding to `DISPLAYCONFIG_PATH_INFO`, `DISPLAYCONFIG_MODE_INFO`, and children thereof.
-mod config_types;
+pub mod config_types;
+pub use config_types::*;
 
 /// A pair of values that often show up together in the Win32 structures that this module abstracts.
 #[derive(Default, Copy, Clone, PartialEq)]
