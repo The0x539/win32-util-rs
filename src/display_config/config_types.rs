@@ -1,4 +1,5 @@
 use crate::win::display as d;
+use bitflags::bitflags;
 use num_enum::{FromPrimitive, IntoPrimitive};
 
 use super::DisplayId;
@@ -41,16 +42,36 @@ impl From<DisplayConfig> for RawDisplayConfig {
 pub struct PathInfo {
     pub source: PathSourceInfo,
     pub target: PathTargetInfo,
-    pub flags: u32,
+    pub flags: PathFlags,
 }
 
 impl From<d::DISPLAYCONFIG_PATH_INFO> for PathInfo {
     fn from(raw: d::DISPLAYCONFIG_PATH_INFO) -> Self {
-        Self {
+        let mut this = Self {
             source: raw.sourceInfo.into(),
             target: raw.targetInfo.into(),
-            flags: raw.flags,
+            flags: PathFlags::from_bits_retain(raw.flags),
+        };
+
+        if this.flags.contains(PathFlags::SUPPORT_VIRTUAL_MODE) {
+            let clone_group_id = (this.source.source_mode_idx & 0xFFFF) as u16;
+            this.source.source_mode_idx >>= 16;
+            // TODO: I haven't gotten a valid value back from this API yet for testing purposes.
+            if clone_group_id != u16::MAX {
+                this.source.clone_group_id = Some(clone_group_id);
+            }
+
+            let desktop_image_idx = (this.source.source_mode_idx & 0xFFFF) as u16;
+            this.target.target_mode_idx >>= 16;
+            // TODO: This seems to be off by one in my experience.
+            // The mode info array goes target-source-image-target-source-image,
+            // but this number consistently points to the Source, not the Image.
+            if desktop_image_idx != u16::MAX {
+                this.target.desktop_image_idx = Some(desktop_image_idx);
+            }
         }
+
+        this
     }
 }
 
@@ -59,7 +80,7 @@ impl From<PathInfo> for d::DISPLAYCONFIG_PATH_INFO {
         Self {
             sourceInfo: value.source.into(),
             targetInfo: value.target.into(),
-            flags: value.flags,
+            flags: value.flags.bits(),
         }
     }
 }
@@ -68,9 +89,9 @@ impl From<PathInfo> for d::DISPLAYCONFIG_PATH_INFO {
 #[derive(Debug, Default, Copy, Clone, PartialEq)]
 pub struct PathSourceInfo {
     pub id: DisplayId,
-    // TODO: the high 16 bits are the "clone group ID"
-    pub mode_info_idx: u32,
-    pub status_flags: u32,
+    pub clone_group_id: Option<u16>,
+    pub source_mode_idx: u32,
+    pub status_flags: SourceFlags,
 }
 
 impl From<d::DISPLAYCONFIG_PATH_SOURCE_INFO> for PathSourceInfo {
@@ -80,40 +101,44 @@ impl From<d::DISPLAYCONFIG_PATH_SOURCE_INFO> for PathSourceInfo {
                 adapter: raw.adapterId,
                 id: raw.id,
             },
-            mode_info_idx: unsafe { raw.Anonymous.modeInfoIdx },
-            status_flags: raw.statusFlags,
+            clone_group_id: None,
+            source_mode_idx: unsafe { raw.Anonymous.modeInfoIdx },
+            status_flags: SourceFlags::from_bits_retain(raw.statusFlags),
         }
     }
 }
 
 impl From<PathSourceInfo> for d::DISPLAYCONFIG_PATH_SOURCE_INFO {
-    fn from(value: PathSourceInfo) -> Self {
+    fn from(mut value: PathSourceInfo) -> Self {
+        if let Some(id) = value.clone_group_id.take() {
+            value.source_mode_idx <<= 16;
+            value.source_mode_idx |= u32::from(id);
+        }
+
         Self {
             adapterId: value.id.adapter,
             id: value.id.id,
             Anonymous: d::DISPLAYCONFIG_PATH_SOURCE_INFO_0 {
-                modeInfoIdx: value.mode_info_idx,
+                modeInfoIdx: value.source_mode_idx,
             },
-            statusFlags: value.status_flags,
+            statusFlags: value.status_flags.bits(),
         }
     }
 }
-
-// TODO: the mode_info_idx stuff briefly described above, with the stupid bitfield
-// pub struct ModeInfoIdx {}
 
 /// [DISPLAYCONFIG_PATH_TARGET_INFO structure (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_path_target_info)
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct PathTargetInfo {
     pub id: DisplayId,
-    pub mode_info_idx: u32,
+    pub desktop_image_idx: Option<u16>,
+    pub target_mode_idx: u32,
     pub output_technology: VideoOutputTechnology,
     pub rotation: Rotation,
     pub scaling: Scaling,
     pub refresh_rate: Rational,
     pub scanline_ordering: ScanlineOrdering,
     pub target_available: bool,
-    pub status_flags: u32,
+    pub status_flags: TargetFlags,
 }
 
 impl From<d::DISPLAYCONFIG_PATH_TARGET_INFO> for PathTargetInfo {
@@ -123,14 +148,15 @@ impl From<d::DISPLAYCONFIG_PATH_TARGET_INFO> for PathTargetInfo {
                 adapter: raw.adapterId,
                 id: raw.id,
             },
-            mode_info_idx: unsafe { raw.Anonymous.modeInfoIdx },
+            desktop_image_idx: None,
+            target_mode_idx: unsafe { raw.Anonymous.modeInfoIdx },
             output_technology: raw.outputTechnology.into(),
             rotation: raw.rotation.into(),
             scaling: raw.scaling.into(),
             refresh_rate: raw.refreshRate.convert(),
             scanline_ordering: raw.scanLineOrdering.into(),
             target_available: raw.targetAvailable.into(),
-            status_flags: raw.statusFlags,
+            status_flags: TargetFlags::from_bits_retain(raw.statusFlags),
         }
     }
 }
@@ -141,7 +167,7 @@ impl From<PathTargetInfo> for d::DISPLAYCONFIG_PATH_TARGET_INFO {
             adapterId: value.id.adapter,
             id: value.id.id,
             Anonymous: d::DISPLAYCONFIG_PATH_TARGET_INFO_0 {
-                modeInfoIdx: value.mode_info_idx,
+                modeInfoIdx: value.target_mode_idx,
             },
             outputTechnology: value.output_technology.into(),
             rotation: value.rotation.into(),
@@ -149,8 +175,32 @@ impl From<PathTargetInfo> for d::DISPLAYCONFIG_PATH_TARGET_INFO {
             refreshRate: value.refresh_rate.convert(),
             scanLineOrdering: value.scanline_ordering.into(),
             targetAvailable: value.target_available.into(),
-            statusFlags: value.status_flags.into(),
+            statusFlags: value.status_flags.bits(),
         }
+    }
+}
+
+bitflags! {
+    #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+    pub struct PathFlags: u32 {
+        const ACTIVE = 0x1;
+        const SUPPORT_VIRTUAL_MODE = 0x8;
+        const BOOST_REFRESH_RATE = 0x10;
+    }
+
+    #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+    pub struct SourceFlags: u32 {
+        const IN_USE = 0x1;
+    }
+
+    #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+    pub struct TargetFlags: u32 {
+        const IN_USE = 0x1;
+        const FORCIBLE = 0x2;
+        const FORCED_AVAILABILITY_BOOT = 0x4;
+        const FORCED_AVAILABILITY_PATH = 0x8;
+        const FORCED_AVAILABILITY_SYSTEM = 0x10;
+        const IS_HMD = 0x20;
     }
 }
 

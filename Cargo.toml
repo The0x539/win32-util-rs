@@ -42,7 +42,13 @@ win-device-properties = ["windows/Win32_Devices_Properties"]
 com = ["win-com"]
 geometry = ["windows/Win32_Foundation"]
 desktop-icons = ["com", "win-variant", "win-shell"]
-display-config = ["geometry", "win-display", "dep:num-rational", "dep:num_enum"]
+display-config = [
+  "geometry",
+  "win-display",
+  "dep:num-rational",
+  "dep:num_enum",
+  "dep:bitflags",
+]
 audio-outputs = [
   "com",
   "dep:windows-core",

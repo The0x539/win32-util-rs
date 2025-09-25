@@ -6,6 +6,8 @@ use windows::core::Result;
 mod query;
 pub mod set;
 
+pub use query::QueryFlags;
+
 /// Types corresponding to `DISPLAYCONFIG_PATH_INFO`, `DISPLAYCONFIG_MODE_INFO`, and children thereof.
 pub mod config_types;
 pub use config_types::*;
