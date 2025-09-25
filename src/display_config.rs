@@ -9,6 +9,9 @@ use windows::core::Result;
 pub mod query;
 pub mod set;
 
+/// Types corresponding to `DISPLAYCONFIG_PATH_INFO`, `DISPLAYCONFIG_MODE_INFO`, and children thereof.
+mod config_types;
+
 /// A pair of values that often show up together in the Win32 structures that this module abstracts.
 #[derive(Default, Copy, Clone, PartialEq)]
 pub struct DisplayId {
