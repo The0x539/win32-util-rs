@@ -81,5 +81,5 @@ fn query(
         config.modes.set_len(num_modes as usize);
     }
 
-    Ok(config.into())
+    Ok(DisplayConfig::from_raw(&config))
 }

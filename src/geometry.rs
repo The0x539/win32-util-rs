@@ -191,6 +191,18 @@ impl<T> Pair for [T; 2] {
     }
 }
 
+impl<T: PartialEq, K: Vec2Kind> PartialEq<(T, T)> for Vec2<T, K> {
+    fn eq(&self, other: &(T, T)) -> bool {
+        self.0 == other.0 && self.1 == other.1
+    }
+}
+
+impl<T: PartialEq, K: Vec2Kind> PartialEq<[T; 2]> for Vec2<T, K> {
+    fn eq(&self, other: &[T; 2]) -> bool {
+        self.0 == other[0] && self.1 == other[1]
+    }
+}
+
 macro_rules! binary_operators {
     (
         $(

@@ -7,7 +7,7 @@ and wishing there were nicer-to-use bindings. Well, now there are. I think.
 ```rust
 use windows::core::Result;
 use win32_util::audio_outputs::{AudioDevice, EndpointRole, EndpointDataFlow, DeviceStateMask};
-use win32_util::display_config::{self, set::Topology};
+use win32_util::display_config::{DisplayConfig, set::Topology};
 
 fn main() -> Result<()> {
     // Audio output devices
@@ -21,7 +21,7 @@ fn main() -> Result<()> {
     }
 
     // Display config
-    display_config::set::from_database(Topology::Extend)?;
+    DisplayConfig::apply_from_database(Topology::Extend)?;
 
     Ok(())
 }

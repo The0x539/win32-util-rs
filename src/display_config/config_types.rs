@@ -19,20 +19,18 @@ pub struct DisplayConfig {
     pub modes: Vec<DisplayModeInfo>,
 }
 
-impl From<RawDisplayConfig> for DisplayConfig {
-    fn from(raw: RawDisplayConfig) -> Self {
+impl DisplayConfig {
+    pub(crate) fn from_raw(raw: &RawDisplayConfig) -> Self {
         Self {
-            paths: raw.paths.into_iter().map(From::from).collect(),
-            modes: raw.modes.into_iter().map(From::from).collect(),
+            paths: raw.paths.iter().copied().map(From::from).collect(),
+            modes: raw.modes.iter().copied().map(From::from).collect(),
         }
     }
-}
 
-impl From<DisplayConfig> for RawDisplayConfig {
-    fn from(value: DisplayConfig) -> Self {
-        Self {
-            paths: value.paths.into_iter().map(From::from).collect(),
-            modes: value.modes.into_iter().map(From::from).collect(),
+    pub(crate) fn to_raw(&self) -> RawDisplayConfig {
+        RawDisplayConfig {
+            paths: self.paths.iter().copied().map(From::from).collect(),
+            modes: self.modes.iter().copied().map(From::from).collect(),
         }
     }
 }
@@ -45,6 +43,20 @@ pub struct PathInfo {
     pub flags: PathFlags,
 }
 
+impl PathInfo {
+    pub fn set_clone_group(&mut self, id: u16) {
+        assert!(id != u16::MAX);
+        assert!(self.flags.contains(PathFlags::SUPPORT_VIRTUAL_MODE));
+
+        self.source.clone_group_id = Some(id);
+        self.target.desktop_image_idx = None;
+
+        // TODO: this is... icky. Not sure how to best handle it.
+        self.source.source_mode_idx = u16::MAX as u32;
+        self.target.target_mode_idx = u16::MAX as u32;
+    }
+}
+
 impl From<d::DISPLAYCONFIG_PATH_INFO> for PathInfo {
     fn from(raw: d::DISPLAYCONFIG_PATH_INFO) -> Self {
         let mut this = Self {
@@ -54,21 +66,8 @@ impl From<d::DISPLAYCONFIG_PATH_INFO> for PathInfo {
         };
 
         if this.flags.contains(PathFlags::SUPPORT_VIRTUAL_MODE) {
-            let clone_group_id = (this.source.source_mode_idx & 0xFFFF) as u16;
-            this.source.source_mode_idx >>= 16;
-            // TODO: I haven't gotten a valid value back from this API yet for testing purposes.
-            if clone_group_id != u16::MAX {
-                this.source.clone_group_id = Some(clone_group_id);
-            }
-
-            let desktop_image_idx = (this.source.source_mode_idx & 0xFFFF) as u16;
-            this.target.target_mode_idx >>= 16;
-            // TODO: This seems to be off by one in my experience.
-            // The mode info array goes target-source-image-target-source-image,
-            // but this number consistently points to the Source, not the Image.
-            if desktop_image_idx != u16::MAX {
-                this.target.desktop_image_idx = Some(desktop_image_idx);
-            }
+            this.source.setup_virtual_mode();
+            this.target.setup_virtual_mode();
         }
 
         this
@@ -76,7 +75,12 @@ impl From<d::DISPLAYCONFIG_PATH_INFO> for PathInfo {
 }
 
 impl From<PathInfo> for d::DISPLAYCONFIG_PATH_INFO {
-    fn from(value: PathInfo) -> Self {
+    fn from(mut value: PathInfo) -> Self {
+        if value.flags.contains(PathFlags::SUPPORT_VIRTUAL_MODE) {
+            value.source.teardown_virtual_mode();
+            value.target.teardown_virtual_mode();
+        }
+
         Self {
             sourceInfo: value.source.into(),
             targetInfo: value.target.into(),
@@ -109,12 +113,11 @@ impl From<d::DISPLAYCONFIG_PATH_SOURCE_INFO> for PathSourceInfo {
 }
 
 impl From<PathSourceInfo> for d::DISPLAYCONFIG_PATH_SOURCE_INFO {
-    fn from(mut value: PathSourceInfo) -> Self {
-        if let Some(id) = value.clone_group_id.take() {
-            value.source_mode_idx <<= 16;
-            value.source_mode_idx |= u32::from(id);
-        }
-
+    fn from(value: PathSourceInfo) -> Self {
+        assert!(
+            value.clone_group_id.is_none(),
+            "Need to call teardown_virtual_mode"
+        );
         Self {
             adapterId: value.id.adapter,
             id: value.id.id,
@@ -123,6 +126,37 @@ impl From<PathSourceInfo> for d::DISPLAYCONFIG_PATH_SOURCE_INFO {
             },
             statusFlags: value.status_flags.bits(),
         }
+    }
+}
+
+impl PathSourceInfo {
+    pub fn mode<'a>(&self, modes: &'a [DisplayModeInfo]) -> &'a SourceMode {
+        modes[self.source_mode_idx as usize]
+            .mode
+            .as_source()
+            .unwrap()
+    }
+
+    pub fn mode_mut<'a>(&self, modes: &'a mut [DisplayModeInfo]) -> &'a mut SourceMode {
+        modes[self.source_mode_idx as usize]
+            .mode
+            .as_mut_source()
+            .unwrap()
+    }
+
+    fn setup_virtual_mode(&mut self) {
+        let clone_group_id = (self.source_mode_idx & 0xFFFF) as u16;
+        self.source_mode_idx >>= 16;
+        // TODO: I haven't gotten a valid value back from this API yet for testing purposes.
+        if clone_group_id != u16::MAX {
+            self.clone_group_id = Some(clone_group_id);
+        }
+    }
+
+    fn teardown_virtual_mode(&mut self) {
+        let clone_group_id = self.clone_group_id.take().unwrap_or(u16::MAX);
+        self.source_mode_idx <<= 16;
+        self.source_mode_idx |= u32::from(clone_group_id);
     }
 }
 
@@ -139,6 +173,53 @@ pub struct PathTargetInfo {
     pub scanline_ordering: ScanlineOrdering,
     pub target_available: bool,
     pub status_flags: TargetFlags,
+}
+
+impl PathTargetInfo {
+    pub fn mode<'a>(&self, modes: &'a [DisplayModeInfo]) -> &'a VideoSignalInfo {
+        modes[self.target_mode_idx as usize]
+            .mode
+            .as_target()
+            .unwrap()
+    }
+
+    pub fn mode_mut<'a>(&self, modes: &'a mut [DisplayModeInfo]) -> &'a VideoSignalInfo {
+        modes[self.target_mode_idx as usize]
+            .mode
+            .as_mut_target()
+            .unwrap()
+    }
+
+    pub fn desktop_image<'a>(&self, modes: &'a [DisplayModeInfo]) -> Option<&'a DesktopImageInfo> {
+        modes
+            .get(self.desktop_image_idx? as usize)?
+            .mode
+            .as_desktop_image()
+    }
+
+    pub fn desktop_image_mut<'a>(
+        &self,
+        modes: &'a mut [DisplayModeInfo],
+    ) -> Option<&'a mut DesktopImageInfo> {
+        modes
+            .get_mut(self.desktop_image_idx? as usize)?
+            .mode
+            .as_mut_desktop_image()
+    }
+
+    fn setup_virtual_mode(&mut self) {
+        let desktop_image_idx = (self.target_mode_idx & 0xFFFF) as u16;
+        self.target_mode_idx >>= 16;
+        if desktop_image_idx != u16::MAX {
+            self.desktop_image_idx = Some(desktop_image_idx);
+        }
+    }
+
+    fn teardown_virtual_mode(&mut self) {
+        let desktop_image_idx = self.desktop_image_idx.take().unwrap_or(u16::MAX);
+        self.target_mode_idx <<= 16;
+        self.target_mode_idx |= u32::from(desktop_image_idx);
+    }
 }
 
 impl From<d::DISPLAYCONFIG_PATH_TARGET_INFO> for PathTargetInfo {
@@ -163,6 +244,10 @@ impl From<d::DISPLAYCONFIG_PATH_TARGET_INFO> for PathTargetInfo {
 
 impl From<PathTargetInfo> for d::DISPLAYCONFIG_PATH_TARGET_INFO {
     fn from(value: PathTargetInfo) -> Self {
+        assert!(
+            value.desktop_image_idx.is_none(),
+            "Need to call teardown_virtual_mode"
+        );
         Self {
             adapterId: value.id.adapter,
             id: value.id.id,
@@ -264,6 +349,50 @@ pub enum ModeInfo {
     Target(VideoSignalInfo),
     Source(SourceMode),
     DesktopImage(DesktopImageInfo),
+}
+
+impl ModeInfo {
+    pub fn as_target(&self) -> Option<&VideoSignalInfo> {
+        match self {
+            ModeInfo::Target(target) => Some(target),
+            _ => None,
+        }
+    }
+
+    pub fn as_source(&self) -> Option<&SourceMode> {
+        match self {
+            ModeInfo::Source(source) => Some(source),
+            _ => None,
+        }
+    }
+
+    pub fn as_desktop_image(&self) -> Option<&DesktopImageInfo> {
+        match self {
+            ModeInfo::DesktopImage(image) => Some(image),
+            _ => None,
+        }
+    }
+
+    pub fn as_mut_target(&mut self) -> Option<&mut VideoSignalInfo> {
+        match self {
+            ModeInfo::Target(target) => Some(target),
+            _ => None,
+        }
+    }
+
+    pub fn as_mut_source(&mut self) -> Option<&mut SourceMode> {
+        match self {
+            ModeInfo::Source(source) => Some(source),
+            _ => None,
+        }
+    }
+
+    pub fn as_mut_desktop_image(&mut self) -> Option<&mut DesktopImageInfo> {
+        match self {
+            ModeInfo::DesktopImage(image) => Some(image),
+            _ => None,
+        }
+    }
 }
 
 /// [DISPLAYCONFIG_VIDEO_SIGNAL_INFO structure (wingdi.h)](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_video_signal_info)

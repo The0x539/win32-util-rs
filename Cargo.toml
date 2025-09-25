@@ -67,5 +67,9 @@ name = "query_display_config"
 required-features = ["display-config"]
 
 [[example]]
+name = "set_display_config"
+required-features = ["display-config"]
+
+[[example]]
 name = "audio_outputs"
 required-features = ["audio-outputs"]
