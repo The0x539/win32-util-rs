@@ -37,6 +37,7 @@ win-audio = ["windows/Win32_Media_Audio"]
 win-com-storage = ["windows/Win32_System_Com_StructuredStorage"]
 win-shell-properties = ["windows/Win32_UI_Shell_PropertiesSystem"]
 win-device-properties = ["windows/Win32_Devices_Properties"]
+win-wam = ["windows/Win32_UI_WindowsAndMessaging"]
 
 # actual crate features
 com = ["win-com"]
@@ -61,6 +62,7 @@ audio-outputs = [
   "win-device-properties",
   "windows/Devices_Custom",
 ]
+window-management = ["geometry", "win-wam", "dep:bitflags", "dep:num_enum"]
 
 [[example]]
 name = "query_display_config"

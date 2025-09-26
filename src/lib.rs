@@ -12,6 +12,9 @@ pub mod display_config;
 #[cfg(feature = "audio-outputs")]
 pub mod audio_outputs;
 
+#[cfg(feature = "window-management")]
+pub mod window_management;
+
 /// Re-exported modules from the windows crate with more useful naming.
 pub mod win {
     #[cfg(feature = "win-display")]
@@ -30,6 +33,8 @@ pub mod win {
     pub use windows::Win32::System::Variant as variant;
     #[cfg(feature = "win-shell")]
     pub use windows::Win32::UI::Shell as shell;
+    #[cfg(feature = "win-wam")]
+    pub use windows::Win32::UI::WindowsAndMessaging as wam;
 }
 
 pub use windows;
