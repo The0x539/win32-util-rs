@@ -1,21 +1,30 @@
-use std::ops::ControlFlow;
+use std::ops::{BitOrAssign, ControlFlow};
+use std::time::Duration;
 
+use crate::strings::{as_pcwstr, from_nwstring, to_wstring};
 use crate::{geometry::Len2, win::wam};
+use bilge::prelude::*;
 use bitflags::bitflags;
-use num_enum::FromPrimitive;
-use windows::Win32::Foundation::{GetLastError, HINSTANCE, HWND, LPARAM};
+use num_enum::{FromPrimitive, IntoPrimitive};
+use windows::Win32::Foundation::{COLORREF, GetLastError, HINSTANCE, HWND, LPARAM};
 use windows::core::{BOOL, Result};
 
 use crate::geometry::{Pos2, Rect, Xywh};
 
 #[derive(Debug, Clone)]
+#[repr(transparent)]
 pub struct Window {
     hwnd: HWND,
 }
 
+// TODO: Rearrange these functions to a more... *planned* order
 impl Window {
     pub const unsafe fn from_raw(hwnd: HWND) -> Self {
         Self { hwnd }
+    }
+
+    pub const unsafe fn from_raw_slice(hwnds: &[HWND]) -> &[Self] {
+        unsafe { std::mem::transmute(hwnds) }
     }
 
     pub unsafe fn try_from_raw(hwnd: HWND) -> Option<Self> {
@@ -30,6 +39,10 @@ impl Window {
         self.hwnd
     }
 
+    pub const fn as_raw_slice(selves: &[Self]) -> &[HWND] {
+        unsafe { std::mem::transmute(selves) }
+    }
+
     pub fn raw_hinstance(&self) -> Result<HINSTANCE> {
         unsafe {
             let ret = wam::GetWindowLongPtrW(self.hwnd, wam::GWL_HINSTANCE);
@@ -37,6 +50,99 @@ impl Window {
                 GetLastError().ok()?;
             }
             Ok(HINSTANCE(ret as *mut _))
+        }
+    }
+
+    pub fn animate(&self, time: Duration, flags: AnimateWindowFlags) -> Result<()> {
+        let flags = wam::ANIMATE_WINDOW_FLAGS(flags.bits());
+        let time = time.as_millis() as _;
+        unsafe { wam::AnimateWindow(self.hwnd, time, flags) }
+    }
+
+    pub fn arrange_minimized_children(&self) -> Result<u32> {
+        unsafe {
+            let height = wam::ArrangeIconicWindows(self.hwnd);
+            if height == 0 {
+                GetLastError().ok()?;
+            }
+            Ok(height)
+        }
+    }
+
+    pub fn bring_to_top(&self) -> Result<()> {
+        unsafe { wam::BringWindowToTop(self.hwnd) }
+    }
+
+    pub fn cascade_children(
+        &self,
+        skip_disabled: bool,
+        z_order: bool,
+        area: Option<Rect<i32>>,
+        kids: Option<&[Window]>,
+    ) {
+        let how = build_flags([
+            (skip_disabled, wam::MDITILE_SKIPDISABLED),
+            (z_order, wam::MDITILE_ZORDER),
+        ]);
+        let rect = area.map(From::from);
+        let lprect = rect.as_ref().map(|r| &raw const *r);
+        unsafe {
+            wam::CascadeWindows(Some(self.hwnd), how, lprect, kids.map(Self::as_raw_slice));
+        }
+    }
+
+    #[doc(alias = "child_from_point")]
+    pub fn descendant_from_point(&self, point: Pos2<i32>) -> Option<Self> {
+        unsafe {
+            let child = wam::ChildWindowFromPoint(self.hwnd, point.into());
+            Self::try_from_raw(child)
+        }
+    }
+
+    #[doc(alias = "child_from_point_ex")]
+    pub fn descendant_from_point_ex(
+        &self,
+        point: Pos2<i32>,
+        skip_disabled: bool,
+        skip_invisible: bool,
+        skip_transparent: bool,
+    ) -> Option<Self> {
+        let flags = build_flags([
+            (skip_disabled, wam::CWP_SKIPDISABLED),
+            (skip_invisible, wam::CWP_SKIPINVISIBLE),
+            (skip_transparent, wam::CWP_SKIPTRANSPARENT),
+        ]);
+        unsafe {
+            let child = wam::ChildWindowFromPointEx(self.hwnd, point.into(), flags);
+            Self::try_from_raw(child)
+        }
+    }
+
+    pub fn close(&self) -> Result<()> {
+        unsafe { wam::CloseWindow(self.hwnd) }
+    }
+
+    pub fn destroy(&self) -> Result<()> {
+        unsafe { wam::DestroyWindow(self.hwnd) }
+    }
+
+    pub fn restore(&self) -> Result<()> {
+        unsafe { wam::OpenIcon(self.hwnd) }
+    }
+
+    pub fn physical_to_logical(&self, point: Pos2<i32>) -> Result<Pos2<i32>> {
+        let mut raw_point = point.into();
+        unsafe {
+            wam::PhysicalToLogicalPoint(self.hwnd, &mut raw_point).ok()?;
+        }
+        Ok(raw_point.into())
+    }
+
+    #[doc(alias = "real_child_from_point")]
+    pub fn immediate_child_from_point(&self, coords: Pos2<i32>) -> Option<Self> {
+        unsafe {
+            let child = wam::RealChildWindowFromPoint(self.hwnd, coords.into());
+            Self::try_from_raw(child)
         }
     }
 
@@ -65,21 +171,52 @@ impl Window {
         }
     }
 
-    pub fn enumerate<F: FnMut(Self) -> ControlFlow<(), ()>>(mut f: F) -> Result<()> {
-        unsafe extern "system" fn wnd_enum_proc<F: FnMut(Window) -> ControlFlow<(), ()>>(
-            param0: HWND,
-            param1: LPARAM,
-        ) -> BOOL {
-            let ret: ControlFlow<(), ()> = unsafe {
-                let window = Window::from_raw(param0);
-                let func = param1.0 as usize as *mut F;
-                (*func)(window)
-            };
-            ret.is_continue().into()
-        }
+    // TODO: atom support?
+    pub fn find_by_name(class_name: Option<&str>, window_name: Option<&str>) -> Result<Self> {
+        // TODO: it would be really cool to detect the UTF-8 code page (or feature flag it?)
+        let class_name = class_name.map(to_wstring);
+        let window_name = window_name.map(to_wstring);
 
+        unsafe {
+            let hwnd = wam::FindWindowW(
+                as_pcwstr(class_name.as_deref()),
+                as_pcwstr(window_name.as_deref()),
+            )?;
+            Ok(Self { hwnd })
+        }
+    }
+
+    pub fn find_child_by_name(
+        &self,
+        after: Option<&Self>,
+        class_name: Option<&str>,
+        window_name: Option<&str>,
+    ) -> Result<Self> {
+        let class_name = class_name.map(to_wstring);
+        let window_name = window_name.map(to_wstring);
+
+        unsafe {
+            let hwnd = wam::FindWindowExW(
+                Some(self.hwnd),
+                after.map(|w| w.hwnd),
+                as_pcwstr(class_name.as_deref()),
+                as_pcwstr(window_name.as_deref()),
+            )?;
+            Ok(Self { hwnd })
+        }
+    }
+
+    pub fn enumerate<F: FnMut(Self) -> ControlFlow<(), ()>>(mut f: F) -> Result<()> {
         let lparam = LPARAM(&raw mut f as usize as isize);
         unsafe { wam::EnumWindows(Some(wnd_enum_proc::<F>), lparam) }
+    }
+
+    pub fn enumerate_children<F: FnMut(Self) -> ControlFlow<(), ()>>(
+        &self,
+        mut f: F,
+    ) -> Result<()> {
+        let lparam = LPARAM(&raw mut f as usize as isize);
+        unsafe { wam::EnumChildWindows(Some(self.hwnd), Some(wnd_enum_proc::<F>), lparam).ok() }
     }
 
     pub fn filter<F: FnMut(&Self) -> bool>(mut f: F) -> Result<Vec<Self>> {
@@ -93,8 +230,23 @@ impl Window {
         Ok(v)
     }
 
+    pub fn filter_children<F: FnMut(&Self) -> bool>(&self, mut f: F) -> Result<Vec<Self>> {
+        let mut v = vec![];
+        self.enumerate_children(|window| {
+            if f(&window) {
+                v.push(window);
+            }
+            ControlFlow::Continue(())
+        })?;
+        Ok(v)
+    }
+
     pub fn get_all() -> Result<Vec<Self>> {
         Self::filter(|_| true)
+    }
+
+    pub fn get_all_children(&self) -> Result<Vec<Self>> {
+        self.filter_children(|_| true)
     }
 
     pub fn find<F: FnMut(&Self) -> bool>(mut f: F) -> Result<Option<Self>> {
@@ -115,6 +267,22 @@ impl Window {
         Ok(o)
     }
 
+    pub fn find_child<F: FnMut(&Self) -> bool>(&self, mut f: F) -> Result<Option<Self>> {
+        let mut o = None;
+        let result = self.enumerate_children(|window| {
+            if f(&window) {
+                o = Some(window);
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        });
+        if o.is_none() {
+            result?;
+        }
+        Ok(o)
+    }
+
     pub fn from_point(point: Pos2<i32>) -> Option<Self> {
         unsafe { Self::try_from_raw(wam::WindowFromPoint(point.into())) }
     }
@@ -129,10 +297,31 @@ impl Window {
         Ok(raw.into())
     }
 
-    pub fn get_rect(&self) -> Result<Rect<i32>> {
+    pub fn window_rect(&self) -> Result<Rect<i32>> {
         let mut raw = Default::default();
         unsafe { wam::GetWindowRect(self.hwnd, &mut raw)? };
         Ok(raw.into())
+    }
+
+    pub fn client_rect(&self) -> Result<Rect<i32>> {
+        let mut raw = Default::default();
+        unsafe { wam::GetClientRect(self.hwnd, &mut raw)? };
+        Ok(raw.into())
+    }
+
+    pub fn desktop() -> Self {
+        unsafe { Self::from_raw(wam::GetDesktopWindow()) }
+    }
+
+    pub fn foreground() -> Option<Self> {
+        unsafe { Self::try_from_raw(wam::GetForegroundWindow()) }
+    }
+
+    pub fn last_active_popup(&self) -> Option<Self> {
+        unsafe {
+            let popup = wam::GetLastActivePopup(self.hwnd);
+            (popup != self.hwnd).then_some(Self::from_raw(popup))
+        }
     }
 
     pub fn move_to(&self, to: Rect<i32, i32, Xywh>, repaint: bool) -> Result<()> {
@@ -143,7 +332,67 @@ impl Window {
         unsafe { wam::IsWindowVisible(self.hwnd).into() }
     }
 
-    // TODO: a *lot* more functions
+    // Must be the application switching window. Uhhhhh.
+    pub fn alt_tab_info(&self, item_index: i32) -> Result<(AltTabInfo, String)> {
+        unsafe {
+            let mut raw = wam::ALTTABINFO::default();
+            raw.cbSize = std::mem::size_of_val(&raw) as u32;
+            let mut text_buf = vec![0u16; 256];
+            wam::GetAltTabInfoW(Some(self.hwnd), item_index, &mut raw, Some(&mut text_buf))?;
+            let text = from_nwstring(&text_buf);
+            Ok((raw.into(), text))
+        }
+    }
+
+    pub fn ancestor(&self, kind: AncestorKind) -> Result<Self> {
+        unsafe {
+            let hwnd = wam::GetAncestor(self.hwnd, wam::GET_ANCESTOR_FLAGS(kind as u32));
+            if hwnd.is_invalid() {
+                GetLastError().ok()?;
+            }
+            Ok(Self { hwnd })
+        }
+    }
+
+    pub fn layered_window_attributes(&self) -> Result<LayeredWindowAttributes> {
+        let (mut color_key, mut alpha, mut flags) = Default::default();
+        unsafe {
+            wam::GetLayeredWindowAttributes(
+                self.hwnd,
+                Some(&mut color_key),
+                Some(&mut alpha),
+                Some(&mut flags),
+            )?;
+        }
+        Ok(LayeredWindowAttributes {
+            color_key: color_key.into(),
+            use_key: (flags & wam::LWA_COLORKEY).0 != 0,
+            alpha,
+            use_alpha: (flags & wam::LWA_ALPHA).0 != 0,
+        })
+    }
+}
+
+fn build_flags<T: Default + BitOrAssign, const N: usize>(pairs: [(bool, T); N]) -> T {
+    let mut flags = T::default();
+    for (condition, flag) in pairs {
+        if condition {
+            flags |= flag;
+        }
+    }
+    flags
+}
+
+unsafe extern "system" fn wnd_enum_proc<F: FnMut(Window) -> ControlFlow<(), ()>>(
+    param0: HWND,
+    param1: LPARAM,
+) -> BOOL {
+    let ret: ControlFlow<(), ()> = unsafe {
+        let window = Window::from_raw(param0);
+        let func = param1.0 as usize as *mut F;
+        (*func)(window)
+    };
+    ret.is_continue().into()
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
@@ -195,71 +444,97 @@ impl From<wam::WINDOWPLACEMENT> for WindowPlacement {
     }
 }
 
-bitflags! {
-    #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
-    pub struct WindowStyle: u32 {
-        const BORDER = wam::WS_BORDER.0;
-        const CAPTION = wam::WS_CAPTION.0;
-        const CHILD = wam::WS_CHILD.0;
-        const CHILD_WINDOW = wam::WS_CHILDWINDOW.0;
-        const CLIP_CHILDREN = wam::WS_CLIPCHILDREN.0;
-        const CLIP_SIBLINGS = wam::WS_CLIPSIBLINGS.0;
-        const DISABLED = wam::WS_DISABLED.0;
-        const DLG_FRAME = wam::WS_DLGFRAME.0;
-        const GROUP = wam::WS_GROUP.0;
-        const H_SCROLL = wam::WS_HSCROLL.0;
-        const ICONIC = wam::WS_ICONIC.0;
-        const MAXIMIZE = wam::WS_MAXIMIZE.0;
-        const MAXIMIZE_BOX = wam::WS_MAXIMIZEBOX.0;
-        const MINIMIZE = wam::WS_MINIMIZE.0;
-        const MINIMIZE_BOX = wam::WS_MINIMIZEBOX.0;
-        const OVERLAPPED_WINDOW = wam::WS_OVERLAPPEDWINDOW.0;
-        const POPUP = wam::WS_POPUP.0;
-        const POPUP_WINDOW = wam::WS_POPUPWINDOW.0;
-        const SIZE_BOX = wam::WS_SIZEBOX.0;
-        const SYS_MENU = wam::WS_SYSMENU.0;
-        const TAB_STOP = wam::WS_TABSTOP.0;
-        const THICK_FRAME = wam::WS_THICKFRAME.0;
-        const TILED = wam::WS_TILED.0;
-        const TILED_WINDOW = wam::WS_TILEDWINDOW.0;
-        const VISIBLE = wam::WS_VISIBLE.0;
-        const V_SCROLL = wam::WS_VSCROLL.0;
+macro_rules! flags {
+    ($(
+        $type:ident {
+            $($mine:ident = $theirs:ident;)*
+        }
+    )*) => {
+        bitflags! {$(
+            #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+            pub struct $type: u32 {
+                $(const $mine = wam::$theirs.0;)*
+            }
+        )*}
+    }
+}
+
+flags! {
+    WindowStyle {
+        BORDER = WS_BORDER;
+        CAPTION = WS_CAPTION;
+        CHILD = WS_CHILD;
+        CHILD_WINDOW = WS_CHILDWINDOW;
+        CLIP_CHILDREN = WS_CLIPCHILDREN;
+        CLIP_SIBLINGS = WS_CLIPSIBLINGS;
+        DISABLED = WS_DISABLED;
+        DLG_FRAME = WS_DLGFRAME;
+        GROUP = WS_GROUP;
+        H_SCROLL = WS_HSCROLL;
+        ICONIC = WS_ICONIC;
+        MAXIMIZE = WS_MAXIMIZE;
+        MAXIMIZE_BOX = WS_MAXIMIZEBOX;
+        MINIMIZE = WS_MINIMIZE;
+        MINIMIZE_BOX = WS_MINIMIZEBOX;
+        OVERLAPPED_WINDOW = WS_OVERLAPPEDWINDOW;
+        POPUP = WS_POPUP;
+        POPUP_WINDOW = WS_POPUPWINDOW;
+        SIZE_BOX = WS_SIZEBOX;
+        SYS_MENU = WS_SYSMENU;
+        TAB_STOP = WS_TABSTOP;
+        THICK_FRAME = WS_THICKFRAME;
+        TILED = WS_TILED;
+        TILED_WINDOW = WS_TILEDWINDOW;
+        VISIBLE = WS_VISIBLE;
+        V_SCROLL = WS_VSCROLL;
     }
 
-    #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
-    pub struct WindowExStyle: u32 {
-        const ACCEPT_FILES = wam::WS_EX_ACCEPTFILES.0;
-        const APP_WINDOW = wam::WS_EX_APPWINDOW.0;
-        const CLIENT_EDGE = wam::WS_EX_CLIENTEDGE.0;
-        const CONTEXT_HELP = wam::WS_EX_CONTEXTHELP.0;
-        const CONTROL_PARENT = wam::WS_EX_CONTROLPARENT.0;
-        const DLG_MODAL_FRAME = wam::WS_EX_DLGMODALFRAME.0;
-        const LAYERED = wam::WS_EX_LAYERED.0;
-        const LEFT = wam::WS_EX_LEFT.0;
-        const LEFT_SCROLLBAR = wam::WS_EX_LEFTSCROLLBAR.0;
-        const LTR_READING = wam::WS_EX_LTRREADING.0;
-        const MDI_CHILD = wam::WS_EX_MDICHILD.0;
-        const NO_ACTIVATE = wam::WS_EX_NOACTIVATE.0;
-        const NO_INHERIT_LAYOUT = wam::WS_EX_NOINHERITLAYOUT.0;
-        const NO_PARENT_NOTIFY = wam::WS_EX_NOPARENTNOTIFY.0;
-        const NO_REDIRECTION_BITMAP = wam::WS_EX_NOREDIRECTIONBITMAP.0;
-        const OVERLAPPED_WINDOW = wam::WS_EX_OVERLAPPEDWINDOW.0;
-        const PALETTE_WINDOW = wam::WS_EX_PALETTEWINDOW.0;
-        const RIGHT = wam::WS_EX_RIGHT.0;
-        const RIGHT_SCROLLBAR = wam::WS_EX_RIGHTSCROLLBAR.0;
-        const RTL_READING = wam::WS_EX_RTLREADING.0;
-        const STATIC_EDGE = wam::WS_EX_STATICEDGE.0;
-        const TOOL_WINDOW = wam::WS_EX_TOOLWINDOW.0;
-        const TOPMOST = wam::WS_EX_TOPMOST.0;
-        const TRANSPARENT = wam::WS_EX_TRANSPARENT.0;
-        const WINDOW_EDGE = wam::WS_EX_WINDOWEDGE.0;
+    WindowExStyle {
+        ACCEPT_FILES = WS_EX_ACCEPTFILES;
+        APP_WINDOW = WS_EX_APPWINDOW;
+        CLIENT_EDGE = WS_EX_CLIENTEDGE;
+        CONTEXT_HELP = WS_EX_CONTEXTHELP;
+        CONTROL_PARENT = WS_EX_CONTROLPARENT;
+        DLG_MODAL_FRAME = WS_EX_DLGMODALFRAME;
+        LAYERED = WS_EX_LAYERED;
+        LEFT = WS_EX_LEFT;
+        LEFT_SCROLLBAR = WS_EX_LEFTSCROLLBAR;
+        LTR_READING = WS_EX_LTRREADING;
+        MDI_CHILD = WS_EX_MDICHILD;
+        NO_ACTIVATE = WS_EX_NOACTIVATE;
+        NO_INHERIT_LAYOUT = WS_EX_NOINHERITLAYOUT;
+        NO_PARENT_NOTIFY = WS_EX_NOPARENTNOTIFY;
+        NO_REDIRECTION_BITMAP = WS_EX_NOREDIRECTIONBITMAP;
+        OVERLAPPED_WINDOW = WS_EX_OVERLAPPEDWINDOW;
+        PALETTE_WINDOW = WS_EX_PALETTEWINDOW;
+        RIGHT = WS_EX_RIGHT;
+        RIGHT_SCROLLBAR = WS_EX_RIGHTSCROLLBAR;
+        RTL_READING = WS_EX_RTLREADING;
+        STATIC_EDGE = WS_EX_STATICEDGE;
+        TOOL_WINDOW = WS_EX_TOOLWINDOW;
+        TOPMOST = WS_EX_TOPMOST;
+        TRANSPARENT = WS_EX_TRANSPARENT;
+        WINDOW_EDGE = WS_EX_WINDOWEDGE;
     }
 
-    #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
-    pub struct WindowPlacementFlags: u32 {
-        const ASYNC_WINDOW_PLACEMENT = wam::WPF_ASYNCWINDOWPLACEMENT.0;
-        const RESTORE_TO_MAXIMIZED = wam::WPF_RESTORETOMAXIMIZED.0;
-        const SET_MIN_POSITION = wam::WPF_SETMINPOSITION.0;
+    WindowPlacementFlags {
+        ASYNC_WINDOW_PLACEMENT = WPF_ASYNCWINDOWPLACEMENT;
+        RESTORE_TO_MAXIMIZED = WPF_RESTORETOMAXIMIZED;
+        SET_MIN_POSITION = WPF_SETMINPOSITION;
+    }
+
+    // TODO: there are several invalid combinations (where some flags are ignored)
+    // that I should make unrepresentable if I can figure out a better repr.
+    AnimateWindowFlags {
+        ACTIVATE = AW_ACTIVATE;
+        BLEND = AW_BLEND;
+        CENTER = AW_CENTER;
+        HIDE = AW_HIDE;
+        SLIDE = AW_SLIDE;
+        RIGHT = AW_HOR_POSITIVE;
+        LEFT = AW_HOR_NEGATIVE;
+        DOWN = AW_VER_POSITIVE;
+        UP = AW_VER_NEGATIVE;
     }
 }
 
@@ -288,4 +563,74 @@ pub enum ShowState {
     ForceMinimize = wam::SW_FORCEMINIMIZE.0,
     #[num_enum(catch_all)]
     Other(i32),
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, IntoPrimitive)]
+#[repr(u32)]
+pub enum AncestorKind {
+    Parent = wam::GA_PARENT.0,
+    Root = wam::GA_ROOT.0,
+    RootOwner = wam::GA_ROOTOWNER.0,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct AltTabInfo {
+    pub items: i32,
+    pub columns: i32,
+    pub rows: i32,
+    pub focused_column: i32,
+    pub focused_row: i32,
+    pub icon_size: Len2<i32>,
+    pub start: Pos2<i32>,
+}
+
+impl From<wam::ALTTABINFO> for AltTabInfo {
+    fn from(raw: wam::ALTTABINFO) -> Self {
+        Self {
+            items: raw.cItems,
+            columns: raw.cColumns,
+            rows: raw.cRows,
+            focused_column: raw.iColFocus,
+            focused_row: raw.iRowFocus,
+            icon_size: (raw.cxItem, raw.cyItem).into(),
+            start: raw.ptStart.into(),
+        }
+    }
+}
+
+#[bitsize(32)]
+#[repr(transparent)]
+#[derive(DebugBits, FromBits, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Rgb {
+    pub red: u8,
+    pub green: u8,
+    pub blue: u8,
+    _padding: u8,
+}
+
+impl From<COLORREF> for Rgb {
+    fn from(value: COLORREF) -> Self {
+        Self::from(value.0)
+    }
+}
+
+#[derive(Debug, Default, Copy, Clone)]
+pub struct LayeredWindowAttributes {
+    pub color_key: Rgb,
+    pub use_key: bool,
+    pub alpha: u8,
+    pub use_alpha: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn color_endianness() {
+        let color = Rgb::from(0x00123456);
+        assert_eq!(color.red(), 0x56);
+        assert_eq!(color.green(), 0x34);
+        assert_eq!(color.blue(), 0x12);
+    }
 }

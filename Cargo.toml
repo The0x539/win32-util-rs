@@ -21,6 +21,7 @@ bitflags = { version = "2.9.4", optional = true }
 
 # needed as a direct dependency by #[interface] for some annoying reason
 windows-core = { version = "0.62", optional = true }
+bilge = { version = "0.3.0", optional = true }
 
 [dependencies.windows]
 version = "0.62"
@@ -63,6 +64,7 @@ audio-outputs = [
   "windows/Devices_Custom",
 ]
 window-management = ["geometry", "win-wam", "dep:bitflags", "dep:num_enum"]
+bilge = ["dep:bilge"]
 
 [[example]]
 name = "query_display_config"

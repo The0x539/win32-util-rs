@@ -1,3 +1,4 @@
+use crate::strings::from_nwstring;
 use crate::win::display::{
     self as d, DISPLAYCONFIG_DEVICE_INFO_HEADER as DeviceInfoHeader,
     DISPLAYCONFIG_DEVICE_INFO_TYPE as DeviceInfoType,
@@ -79,9 +80,4 @@ macro_rules! device_info_packet {
 device_info_packet! {
     d::DISPLAYCONFIG_SOURCE_DEVICE_NAME,
     d::DISPLAYCONFIG_TARGET_DEVICE_NAME,
-}
-
-fn from_nwstring(buf: &[u16]) -> String {
-    let i = buf.iter().position(|c| *c == 0).unwrap_or(buf.len());
-    String::from_utf16_lossy(&buf[..i])
 }
