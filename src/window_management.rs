@@ -4,8 +4,7 @@ use crate::{geometry::Len2, win::wam};
 use bitflags::bitflags;
 use num_enum::FromPrimitive;
 use windows::Win32::Foundation::{GetLastError, HINSTANCE, HWND, LPARAM};
-use windows::core::Result;
-use windows_core::BOOL;
+use windows::core::{BOOL, Result};
 
 use crate::geometry::{Pos2, Rect, Xywh};
 
