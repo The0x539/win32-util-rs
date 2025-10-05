@@ -5,7 +5,7 @@ use windows::Win32::Foundation::{POINT, POINTL, POINTS, RECT, RECTL, SIZE};
 use crate::win::display::{DISPLAYCONFIG_2DREGION, POINTFIX, RECTFX};
 
 use std::marker::PhantomData;
-use std::ops::{Add, AddAssign, Neg, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign};
 
 mod sealed {
     pub trait Sealed {}
@@ -241,6 +241,20 @@ binary_operators! {
         Len2 - Tup2 -> Len2;
         Pos2 - Arr2 -> Pos2;
         Len2 - Arr2 -> Len2;
+    }
+}
+
+impl<T: Mul<U>, U: Copy> Mul<U> for Len2<T> {
+    type Output = Len2<T::Output>;
+    fn mul(self, rhs: U) -> Self::Output {
+        Len2::new(self.0 * rhs, self.1 * rhs)
+    }
+}
+
+impl<T: Div<U>, U: Copy> Div<U> for Len2<T> {
+    type Output = Len2<T::Output>;
+    fn div(self, rhs: U) -> Self::Output {
+        Len2::new(self.0 / rhs, self.1 / rhs)
     }
 }
 
