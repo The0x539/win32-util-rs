@@ -78,18 +78,38 @@ pub enum Xywh {}
 impl sealed::Sealed for Xywh {}
 impl RectKind for Xywh {}
 
-impl<T> Rect<T, T, Ltrb> {
+impl<T: Copy> Rect<T, T, Ltrb> {
     pub const fn from_ltrb(left: T, top: T, right: T, bottom: T) -> Self {
         Self(left, top, right, bottom, PhantomData)
     }
-}
 
-impl<T: Copy> Rect<T, T, Ltrb> {
     pub const fn from_corners(top_left: Pos2<T>, bottom_right: Pos2<T>) -> Self {
         Self::from_ltrb(top_left.0, top_left.1, bottom_right.0, bottom_right.1)
     }
 
-    pub const fn bottom_right(&self) -> Pos2<T> {
+    #[must_use]
+    pub fn as_xywh(&self) -> Rect<T, T::Output, Xywh>
+    where
+        T: Sub<Output: Copy>,
+    {
+        Rect::from_pos_size(self.top_left(), self.size())
+    }
+
+    pub fn is_valid(&self) -> bool
+    where
+        T: PartialOrd,
+    {
+        self.2 >= self.0 && self.3 >= self.1
+    }
+
+    pub fn is_empty(&self) -> bool
+    where
+        T: PartialOrd,
+    {
+        self.2 <= self.0 && self.3 <= self.1
+    }
+
+    pub fn bottom_right(&self) -> Pos2<T> {
         Vec2::new(self.2, self.3)
     }
 
@@ -99,40 +119,111 @@ impl<T: Copy> Rect<T, T, Ltrb> {
     {
         self.bottom_right() - self.top_left()
     }
+
+    #[must_use]
+    pub fn with_top_left(mut self, top_left: Pos2<T>) -> Self
+    where
+        T: Sub + PartialOrd,
+        T: AddAssign<T::Output> + SubAssign<T::Output>,
+    {
+        update_coords(&mut self.0, &mut self.2, top_left.0);
+        update_coords(&mut self.1, &mut self.3, top_left.1);
+        self
+    }
+
+    #[must_use]
+    pub fn with_size(mut self, size: Len2<T>) -> Self
+    where
+        T: Add<Output = T>,
+    {
+        self.2 = self.0 + size.0;
+        self.3 = self.1 + size.1;
+        self
+    }
 }
 
-impl<T, U> Rect<T, U, Xywh> {
+fn update_coords<T, U>(v0: &mut T, v1: &mut U, new_v0: T)
+where
+    T: PartialOrd + Copy + Sub,
+    U: AddAssign<T::Output> + SubAssign<T::Output>,
+{
+    if new_v0 > *v0 {
+        let delta = new_v0 - *v0;
+        *v1 += delta;
+    } else if *v0 > new_v0 {
+        let delta = *v0 - new_v0;
+        *v1 -= delta;
+    }
+}
+
+impl<T: Copy, U: Copy> Rect<T, U, Xywh> {
     pub const fn from_xywh(x: T, y: T, width: U, height: U) -> Self {
         Self(x, y, width, height, PhantomData)
     }
 
-    pub const fn from_pos_size(top_left: Pos2<T>, size: Len2<U>) -> Self
-    where
-        T: Copy,
-        U: Copy,
-    {
+    pub const fn from_pos_size(top_left: Pos2<T>, size: Len2<U>) -> Self {
         Self::from_xywh(top_left.0, top_left.1, size.0, size.1)
+    }
+
+    #[must_use]
+    pub fn as_ltrb(&self) -> Rect<T, T, Ltrb>
+    where
+        T: Add<U, Output = T>,
+    {
+        Rect::from_corners(self.top_left(), self.bottom_right())
+    }
+
+    pub fn is_valid(&self) -> bool
+    where
+        U: PartialOrd + Default,
+    {
+        let zero = U::default();
+        self.2 >= zero && self.3 >= zero
+    }
+
+    pub fn is_empty(&self) -> bool
+    where
+        U: PartialOrd + Default,
+    {
+        let zero = U::default();
+        self.2 <= zero && self.3 <= zero
     }
 
     pub fn bottom_right(&self) -> Pos2<T::Output>
     where
-        T: Add<U> + Copy,
-        U: Copy,
+        T: Add<U>,
     {
         self.top_left() + self.size()
     }
 
-    pub const fn size(&self) -> Len2<U>
-    where
-        U: Copy,
-    {
+    pub const fn size(&self) -> Len2<U> {
         Vec2::new(self.2, self.3)
+    }
+
+    #[must_use]
+    pub fn with_top_left(mut self, top_left: Pos2<T>) -> Self {
+        self.0 = top_left.0;
+        self.1 = top_left.1;
+        self
+    }
+
+    #[must_use]
+    pub fn with_size(mut self, size: Len2<U>) -> Self {
+        self.2 = size.0;
+        self.3 = size.1;
+        self
     }
 }
 
 impl<T: Copy, U, K: RectKind> Rect<T, U, K> {
     pub const fn top_left(&self) -> Pos2<T> {
         Vec2::new(self.0, self.1)
+    }
+}
+
+impl<T: Copy, U: Copy, K: RectKind> Rect<T, U, K> {
+    pub const fn cast_kind<K2: RectKind>(self) -> Rect<T, U, K2> {
+        Rect(self.0, self.1, self.2, self.3, PhantomData)
     }
 }
 
@@ -257,7 +348,6 @@ impl<T: Div<U>, U: Copy> Div<U> for Len2<T> {
         Len2::new(self.0 / rhs, self.1 / rhs)
     }
 }
-
 impl<T, K: Vec2Kind, R> AddAssign<R> for Vec2<T, K>
 where
     Self: Add<R, Output = Self>,
@@ -288,6 +378,76 @@ impl<T: Neg, K: Vec2Kind> Neg for Vec2<T, K> {
     type Output = Vec2<T::Output, K>;
     fn neg(self) -> Self::Output {
         self.map(T::neg)
+    }
+}
+
+impl<T: Add<Output = T> + Copy> Add<Len2<T>> for Rect<T, T, Ltrb> {
+    type Output = Self;
+    fn add(self, rhs: Len2<T>) -> Self::Output {
+        let Rect(l, t, r, b, ..) = self;
+        let Vec2(dx, dy, ..) = rhs;
+        Self::from_ltrb(l + dx, t + dy, r + dx, b + dy)
+    }
+}
+
+impl<T: Sub<Output = T> + Copy> Sub<Len2<T>> for Rect<T, T, Ltrb> {
+    type Output = Self;
+    fn sub(self, rhs: Len2<T>) -> Self::Output {
+        let Rect(l, t, r, b, ..) = self;
+        let Vec2(dx, dy, ..) = rhs;
+        Self::from_ltrb(l - dx, t - dy, r - dx, b - dy)
+    }
+}
+
+impl<T: AddAssign + Copy> AddAssign<Len2<T>> for Rect<T, T, Ltrb> {
+    fn add_assign(&mut self, rhs: Len2<T>) {
+        let Vec2(dx, dy, ..) = rhs;
+        self.0 += dx;
+        self.1 += dy;
+        self.2 += dx;
+        self.3 += dy;
+    }
+}
+
+impl<T: SubAssign + Copy> SubAssign<Len2<T>> for Rect<T, T, Ltrb> {
+    fn sub_assign(&mut self, rhs: Len2<T>) {
+        let Vec2(dx, dy, ..) = rhs;
+        self.0 -= dx;
+        self.1 -= dy;
+        self.2 -= dx;
+        self.3 -= dx;
+    }
+}
+
+impl<T: Add<Output = T> + Copy, U: Copy> Add<Len2<T>> for Rect<T, U, Xywh> {
+    type Output = Self;
+    fn add(self, rhs: Len2<T>) -> Self::Output {
+        let Rect(x, y, w, h, ..) = self;
+        let Vec2(dx, dy, ..) = rhs;
+        Self::from_xywh(x + dx, y + dy, w, h)
+    }
+}
+
+impl<T: Sub<Output = T> + Copy, U: Copy> Sub<Len2<T>> for Rect<T, U, Xywh> {
+    type Output = Self;
+    fn sub(self, rhs: Len2<T>) -> Self::Output {
+        let Rect(x, y, w, h, ..) = self;
+        let Vec2(dx, dy, ..) = rhs;
+        Self::from_xywh(x - dx, y - dy, w, h)
+    }
+}
+
+impl<T: AddAssign, U> AddAssign<Len2<T>> for Rect<T, U, Xywh> {
+    fn add_assign(&mut self, rhs: Len2<T>) {
+        self.0 += rhs.0;
+        self.1 += rhs.1;
+    }
+}
+
+impl<T: SubAssign, U> SubAssign<Len2<T>> for Rect<T, U, Xywh> {
+    fn sub_assign(&mut self, rhs: Len2<T>) {
+        self.0 -= rhs.0;
+        self.1 -= rhs.1;
     }
 }
 
