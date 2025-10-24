@@ -1,4 +1,4 @@
-use windows_core::PCWSTR;
+use windows::core::PCWSTR;
 
 pub fn from_nwstring(buf: &[u16]) -> String {
     let i = buf.iter().position(|c| *c == 0).unwrap_or(buf.len());

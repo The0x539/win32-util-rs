@@ -39,6 +39,7 @@ win-com-storage = ["windows/Win32_System_Com_StructuredStorage"]
 win-shell-properties = ["windows/Win32_UI_Shell_PropertiesSystem"]
 win-device-properties = ["windows/Win32_Devices_Properties"]
 win-wam = ["windows/Win32_UI_WindowsAndMessaging"]
+win-gdi = ["windows/Win32_Graphics_Gdi"]
 
 # actual crate features
 com = ["win-com"]
@@ -63,8 +64,14 @@ audio-outputs = [
   "win-device-properties",
   "windows/Devices_Custom",
 ]
-window-management = ["geometry", "win-wam", "dep:bitflags", "dep:num_enum"]
-bilge = ["dep:bilge"]
+window-management = [
+  "geometry",
+  "win-wam",
+  "win-gdi",
+  "dep:bitflags",
+  "dep:num_enum",
+  "dep:bilge",
+]
 
 [[example]]
 name = "query_display_config"
@@ -77,3 +84,7 @@ required-features = ["display-config"]
 [[example]]
 name = "audio_outputs"
 required-features = ["audio-outputs"]
+
+[[example]]
+name = "create_window"
+required-features = ["window-management"]

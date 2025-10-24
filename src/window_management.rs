@@ -1,13 +1,17 @@
 use std::ops::{BitOrAssign, ControlFlow};
 use std::time::Duration;
 
+use crate::geometry::Len2;
 use crate::strings::{as_pcwstr, from_nwstring, to_wstring};
-use crate::{geometry::Len2, win::wam};
+use crate::win::{gdi, wam};
 use bilge::prelude::*;
 use bitflags::bitflags;
 use num_enum::{FromPrimitive, IntoPrimitive};
-use windows::Win32::Foundation::{COLORREF, GetLastError, HINSTANCE, HWND, LPARAM};
-use windows::core::{BOOL, Result};
+use windows::Win32::Foundation::{
+    COLORREF, ERROR_INVALID_WINDOW_HANDLE, GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM,
+};
+use windows::Win32::UI::WindowsAndMessaging::WNDCLASSEXW;
+use windows::core::{BOOL, PCWSTR, Result};
 
 use crate::geometry::{Pos2, Rect, Xywh};
 
@@ -27,8 +31,8 @@ impl Window {
         unsafe { std::mem::transmute(hwnds) }
     }
 
-    pub unsafe fn try_from_raw(hwnd: HWND) -> Option<Self> {
-        if hwnd.is_invalid() {
+    pub const unsafe fn try_from_raw(hwnd: HWND) -> Option<Self> {
+        if hwnd.0.is_null() {
             None
         } else {
             Some(Self { hwnd })
@@ -332,7 +336,7 @@ impl Window {
         unsafe { wam::IsWindowVisible(self.hwnd).into() }
     }
 
-    // Must be the application switching window. Uhhhhh.
+    // Must be the application-switching window. Uhhhhh.
     pub fn alt_tab_info(&self, item_index: i32) -> Result<(AltTabInfo, String)> {
         unsafe {
             let mut raw = wam::ALTTABINFO::default();
@@ -370,6 +374,64 @@ impl Window {
             alpha,
             use_alpha: (flags & wam::LWA_ALPHA).0 != 0,
         })
+    }
+
+    pub fn create<C: ToWindowClass + ?Sized>(
+        class_name: &C,
+        window_name: Option<&str>,
+        style: WindowStyle,
+        ex_style: WindowExStyle,
+        rect: Rect<i32, i32, Xywh>,
+        parent: Option<&Self>,
+        menu: Option<wam::HMENU>,
+        param: Option<*const std::ffi::c_void>,
+    ) -> Result<Self> {
+        let prep = class_name.step1();
+        let window_name = window_name.map(to_wstring);
+        unsafe {
+            let raw = wam::CreateWindowExW(
+                wam::WINDOW_EX_STYLE(ex_style.bits()),
+                class_name.step2(&prep),
+                as_pcwstr(window_name.as_deref()),
+                wam::WINDOW_STYLE(style.bits()),
+                rect.0,
+                rect.1,
+                rect.2,
+                rect.3,
+                parent.map(Self::as_raw),
+                menu,
+                None::<HINSTANCE>,
+                param,
+            )?;
+            // the windows crate should have already checked this
+            assert!(!raw.is_invalid());
+            Ok(Self::from_raw(raw))
+        }
+    }
+
+    pub fn run_message_loop(&self) -> WPARAM {
+        let mut msg = wam::MSG::default();
+        loop {
+            let ret = unsafe { wam::GetMessageW(&mut msg, Some(self.as_raw()), 0, 0) };
+            match ret.0 {
+                -1 => {
+                    if unsafe { GetLastError() } == ERROR_INVALID_WINDOW_HANDLE {
+                        break msg.wParam;
+                    }
+                    println!("idk, {:?}", unsafe { GetLastError() });
+                }
+                0 => break msg.wParam,
+                _ => unsafe {
+                    _ = wam::TranslateMessage(&mut msg);
+                    wam::DispatchMessageW(&mut msg);
+                },
+            }
+        }
+    }
+
+    pub fn show(&self, state: ShowState) -> bool {
+        let state = wam::SHOW_WINDOW_CMD(state.into());
+        unsafe { wam::ShowWindow(self.as_raw(), state).into() }
     }
 }
 
@@ -444,7 +506,7 @@ impl From<wam::WINDOWPLACEMENT> for WindowPlacement {
     }
 }
 
-macro_rules! flags {
+macro_rules! define_flags {
     ($(
         $type:ident {
             $($mine:ident = $theirs:ident;)*
@@ -459,7 +521,7 @@ macro_rules! flags {
     }
 }
 
-flags! {
+define_flags! {
     WindowStyle {
         BORDER = WS_BORDER;
         CAPTION = WS_CAPTION;
@@ -536,6 +598,21 @@ flags! {
         DOWN = AW_VER_POSITIVE;
         UP = AW_VER_NEGATIVE;
     }
+
+    WindowClassStyle {
+        BYTE_ALIGN_CLIENT = CS_BYTEALIGNCLIENT;
+        BYTE_ALIGN_WINDOW = CS_BYTEALIGNWINDOW;
+        CLASS_DC = CS_CLASSDC;
+        DOUBLE_CLICKS = CS_DBLCLKS;
+        DROP_SHADOW = CS_DROPSHADOW;
+        GLOBAL_CLASS = CS_GLOBALCLASS;
+        H_REDRAW = CS_HREDRAW;
+        V_REDRAW = CS_VREDRAW;
+        NO_CLOSE = CS_NOCLOSE;
+        OWN_DC = CS_OWNDC;
+        PARENT_DC = CS_PARENTDC;
+        SAVE_BITS = CS_SAVEBITS;
+    }
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, FromPrimitive)]
@@ -546,7 +623,7 @@ pub enum WindowStatus {
     ActiveCaption = wam::WS_ACTIVECAPTION.0,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, FromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, FromPrimitive, IntoPrimitive)]
 #[repr(i32)]
 pub enum ShowState {
     Hide = wam::SW_HIDE.0,
@@ -632,5 +709,96 @@ mod tests {
         assert_eq!(color.red(), 0x56);
         assert_eq!(color.green(), 0x34);
         assert_eq!(color.blue(), 0x12);
+    }
+}
+
+pub struct WindowClass {
+    atom: u16,
+}
+
+impl WindowClass {
+    pub const unsafe fn from_raw(atom: u16) -> Self {
+        Self { atom }
+    }
+
+    pub const unsafe fn try_from_raw(atom: u16) -> Option<Self> {
+        if atom == 0 { None } else { Some(Self { atom }) }
+    }
+
+    pub const fn as_raw(&self) -> u16 {
+        self.atom
+    }
+
+    pub fn register<C: ToWindowClass + ?Sized>(
+        style: WindowClassStyle,
+        procedure: Option<WndProc>,
+        is_dialog_box: bool,
+        icon: Option<wam::HICON>,
+        small_icon: Option<wam::HICON>,
+        cursor: Option<wam::HCURSOR>,
+        background: Option<gdi::HBRUSH>,
+        menu_name: Option<&str>,
+        class_name: &C,
+    ) -> Result<Self> {
+        let wnd_extra = if is_dialog_box {
+            wam::DLGWINDOWEXTRA as i32
+        } else {
+            0
+        };
+
+        let prep = class_name.step1();
+        let menu_name = menu_name.map(to_wstring);
+
+        let class = WNDCLASSEXW {
+            cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
+            style: wam::WNDCLASS_STYLES(style.bits()),
+            lpfnWndProc: procedure,
+            cbClsExtra: 0, // I don't understand the purpose of this option.
+            cbWndExtra: wnd_extra,
+            hInstance: Default::default(),
+            hIcon: icon.unwrap_or_default(),
+            hIconSm: small_icon.unwrap_or_default(),
+            hCursor: cursor.unwrap_or_default(),
+            hbrBackground: background.unwrap_or_default(),
+            lpszClassName: class_name.step2(&prep),
+            lpszMenuName: as_pcwstr(menu_name.as_deref()),
+        };
+
+        unsafe {
+            let atom = wam::RegisterClassExW(&class);
+            if atom == 0 {
+                return Err(GetLastError().ok().unwrap_err());
+            }
+            Ok(Self { atom })
+        }
+    }
+}
+
+type WndProc = unsafe extern "system" fn(HWND, u32, WPARAM, LPARAM) -> LRESULT;
+
+pub unsafe trait ToWindowClass {
+    type Prep;
+    fn step1(&self) -> Self::Prep;
+    fn step2(&self, prep: &Self::Prep) -> PCWSTR;
+}
+
+unsafe impl ToWindowClass for str {
+    type Prep = Vec<u16>;
+
+    fn step1(&self) -> Self::Prep {
+        to_wstring(self)
+    }
+
+    fn step2(&self, prep: &Self::Prep) -> PCWSTR {
+        as_pcwstr(Some(&prep[..]))
+    }
+}
+
+unsafe impl ToWindowClass for WindowClass {
+    type Prep = ();
+    fn step1(&self) {}
+
+    fn step2(&self, (): &()) -> PCWSTR {
+        PCWSTR(std::ptr::without_provenance(usize::from(self.atom)))
     }
 }

@@ -21,6 +21,8 @@ pub mod win {
     pub use windows::Win32::Devices::Display as display;
     #[cfg(feature = "win-device-properties")]
     pub use windows::Win32::Devices::Properties as properties;
+    #[cfg(feature = "win-gdi")]
+    pub use windows::Win32::Graphics::Gdi as gdi;
     #[cfg(feature = "win-audio")]
     pub use windows::Win32::Media::Audio as audio;
     #[cfg(feature = "win-com")]
