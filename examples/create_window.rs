@@ -6,17 +6,11 @@ use win32_util::{
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 
 fn main() -> windows::core::Result<()> {
-    let class = WindowClass::register(
-        WindowClassStyle::H_REDRAW | WindowClassStyle::V_REDRAW,
-        Some(wnd_proc),
-        false,
-        None,
-        None,
-        None,
-        None,
-        None,
-        "FooClass",
-    )?;
+    let class = WindowClass::builder("FooClass")
+        .procedure(wnd_proc)
+        .add_style(WindowClassStyle::H_REDRAW)
+        .add_style(WindowClassStyle::V_REDRAW)
+        .register()?;
 
     let window = Window::create(
         &class,

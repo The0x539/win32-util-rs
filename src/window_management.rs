@@ -729,47 +729,83 @@ impl WindowClass {
         self.atom
     }
 
-    pub fn register<C: ToWindowClass + ?Sized>(
-        style: WindowClassStyle,
-        procedure: Option<WndProc>,
-        is_dialog_box: bool,
-        icon: Option<wam::HICON>,
-        small_icon: Option<wam::HICON>,
-        cursor: Option<wam::HCURSOR>,
-        background: Option<gdi::HBRUSH>,
-        menu_name: Option<&str>,
-        class_name: &C,
-    ) -> Result<Self> {
-        let wnd_extra = if is_dialog_box {
-            wam::DLGWINDOWEXTRA as i32
-        } else {
-            0
+    pub fn builder<C: ToWindowClass + ?Sized>(class_name: &C) -> WindowClassBuilder<C> {
+        let mut builder = WindowClassBuilder {
+            inner: WNDCLASSEXW::default(),
+            menu_name: None,
+            class_name: class_name.step1(),
         };
+        builder.inner.cbSize = std::mem::size_of_val(&builder.inner) as u32;
+        builder.inner.lpszClassName = class_name.step2(&builder.class_name);
+        builder
+    }
+}
 
-        let prep = class_name.step1();
-        let menu_name = menu_name.map(to_wstring);
+pub struct WindowClassBuilder<C: ToWindowClass + ?Sized> {
+    inner: WNDCLASSEXW,
+    menu_name: Option<Vec<u16>>,
+    class_name: C::Prep,
+}
 
-        let class = WNDCLASSEXW {
-            cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
-            style: wam::WNDCLASS_STYLES(style.bits()),
-            lpfnWndProc: procedure,
-            cbClsExtra: 0, // I don't understand the purpose of this option.
-            cbWndExtra: wnd_extra,
-            hInstance: Default::default(),
-            hIcon: icon.unwrap_or_default(),
-            hIconSm: small_icon.unwrap_or_default(),
-            hCursor: cursor.unwrap_or_default(),
-            hbrBackground: background.unwrap_or_default(),
-            lpszClassName: class_name.step2(&prep),
-            lpszMenuName: as_pcwstr(menu_name.as_deref()),
-        };
+impl<C: ToWindowClass + ?Sized> WindowClassBuilder<C> {
+    pub fn style(mut self, style: WindowClassStyle) -> Self {
+        self.inner.style.0 = style.bits();
+        self
+    }
 
+    pub fn add_style(mut self, style: WindowClassStyle) -> Self {
+        self.inner.style.0 |= style.bits();
+        self
+    }
+
+    pub fn procedure(mut self, f: WndProc) -> Self {
+        self.inner.lpfnWndProc = Some(f);
+        self
+    }
+
+    pub fn class_extra(mut self, extra: usize) -> Self {
+        self.inner.cbClsExtra = extra.try_into().unwrap();
+        self
+    }
+
+    pub fn instance_extra(mut self, extra: usize) -> Self {
+        self.inner.cbWndExtra = extra.try_into().unwrap();
+        self
+    }
+
+    pub fn icon(mut self, icon: wam::HICON) -> Self {
+        self.inner.hIcon = icon;
+        self
+    }
+
+    pub fn small_icon(mut self, small_icon: wam::HICON) -> Self {
+        self.inner.hIconSm = small_icon;
+        self
+    }
+
+    pub fn cursor(mut self, cursor: wam::HCURSOR) -> Self {
+        self.inner.hCursor = cursor;
+        self
+    }
+
+    pub fn background(mut self, background: gdi::HBRUSH) -> Self {
+        self.inner.hbrBackground = background;
+        self
+    }
+
+    pub fn menu_name(mut self, menu_name: &str) -> Self {
+        self.menu_name = Some(to_wstring(menu_name));
+        self.inner.lpszMenuName.0 = self.menu_name.as_ref().unwrap().as_ptr();
+        self
+    }
+
+    pub fn register(self) -> Result<WindowClass> {
         unsafe {
-            let atom = wam::RegisterClassExW(&class);
+            let atom = wam::RegisterClassExW(&self.inner);
             if atom == 0 {
                 return Err(GetLastError().ok().unwrap_err());
             }
-            Ok(Self { atom })
+            Ok(WindowClass { atom })
         }
     }
 }
