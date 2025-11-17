@@ -33,6 +33,9 @@ pub mod audio_outputs;
 #[cfg(feature = "window-management")]
 pub mod window_management;
 
+#[cfg(feature = "registry")]
+pub mod registry;
+
 /// Re-exported modules from the windows crate with more useful naming.
 pub mod win {
     #[cfg(feature = "win-display")]
@@ -49,6 +52,8 @@ pub mod win {
     pub use windows::Win32::System::Com::StructuredStorage as com_storage;
     #[cfg(feature = "win-ole")]
     pub use windows::Win32::System::Ole as ole;
+    #[cfg(feature = "win-registry")]
+    pub use windows::Win32::System::Registry as reg;
     #[cfg(feature = "win-variant")]
     pub use windows::Win32::System::Variant as variant;
     #[cfg(feature = "win-shell")]

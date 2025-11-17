@@ -40,6 +40,7 @@ win-shell-properties = ["windows/Win32_UI_Shell_PropertiesSystem"]
 win-device-properties = ["windows/Win32_Devices_Properties"]
 win-wam = ["windows/Win32_UI_WindowsAndMessaging"]
 win-gdi = ["windows/Win32_Graphics_Gdi"]
+win-registry = ["windows/Win32_System_Registry"]
 
 # actual crate features
 com = ["win-com"]
@@ -72,6 +73,7 @@ window-management = [
   "dep:num_enum",
   "dep:bilge",
 ]
+registry = ["win-registry", "dep:bitflags"]
 
 [[example]]
 name = "query_display_config"
@@ -88,3 +90,7 @@ required-features = ["audio-outputs"]
 [[example]]
 name = "create_window"
 required-features = ["window-management"]
+
+[[example]]
+name = "registry_watcher"
+required-features = ["registry", "desktop-icons"]
