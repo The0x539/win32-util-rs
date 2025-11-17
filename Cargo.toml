@@ -94,3 +94,7 @@ required-features = ["window-management"]
 [[example]]
 name = "registry_watcher"
 required-features = ["registry", "desktop-icons"]
+
+[[example]]
+name = "audio_output_listener"
+required-features = ["audio-outputs"]

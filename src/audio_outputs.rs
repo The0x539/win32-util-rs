@@ -1,9 +1,11 @@
 use crate::com;
+use crate::strings::from_nwstring;
 use crate::win::{audio, com_storage::PROPVARIANT, properties};
+use audio::IMMNotificationClient;
 use bitflags::bitflags;
-use num_enum::FromPrimitive;
+use num_enum::{FromPrimitive, TryFromPrimitive};
 use windows::Win32::Foundation::{DEVPROPKEY, PROPERTYKEY};
-use windows::core::{HSTRING, Interface, PWSTR, Result};
+use windows::core::{HSTRING, Interface, PCWSTR, PWSTR, Result, implement};
 
 /// Here be dragons.
 mod interfaces;
@@ -116,7 +118,7 @@ impl AudioDevice {
 }
 
 /// [ERole enumeration (mmdeviceapi.h)](https://learn.microsoft.com/en-us/windows/win32/api/mmdeviceapi/ne-mmdeviceapi-erole)
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, TryFromPrimitive)]
 #[repr(i32)]
 pub enum EndpointRole {
     Console = audio::eConsole.0,
@@ -128,6 +130,12 @@ pub enum EndpointRole {
 impl From<EndpointRole> for audio::ERole {
     fn from(value: EndpointRole) -> Self {
         Self(value as i32)
+    }
+}
+
+impl From<audio::ERole> for EndpointRole {
+    fn from(value: audio::ERole) -> Self {
+        Self::try_from(value.0).unwrap()
     }
 }
 
@@ -144,6 +152,27 @@ pub enum EndpointDataFlow {
 impl From<EndpointDataFlow> for audio::EDataFlow {
     fn from(value: EndpointDataFlow) -> Self {
         Self(value as i32)
+    }
+}
+
+impl From<audio::EDataFlow> for EndpointDataFlow {
+    fn from(value: audio::EDataFlow) -> Self {
+        Self::try_from(value.0).unwrap()
+    }
+}
+
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive)]
+pub enum DeviceState {
+    Active = 1,
+    Disabled = 2,
+    NotPresent = 4,
+    Unplugged = 8,
+}
+
+impl From<audio::DEVICE_STATE> for DeviceState {
+    fn from(value: audio::DEVICE_STATE) -> Self {
+        Self::try_from(value.0).unwrap()
     }
 }
 
@@ -167,5 +196,105 @@ impl Default for DeviceStateMask {
 impl From<DeviceStateMask> for audio::DEVICE_STATE {
     fn from(value: DeviceStateMask) -> Self {
         Self(value.bits())
+    }
+}
+
+#[allow(unused_variables)]
+pub trait AudioDeviceCallbacks: 'static {
+    fn subscribe(self) -> Result<UnsubscribeHandle>
+    where
+        Self: Sized,
+    {
+        let enumerator = enumerator()?;
+        let adapter = NotificationClientAdapter {
+            inner: Box::new(self),
+        };
+        let client = IMMNotificationClient::from(adapter);
+        unsafe {
+            enumerator.RegisterEndpointNotificationCallback(&client)?;
+        }
+        Ok(UnsubscribeHandle { enumerator, client })
+    }
+
+    fn device_state_changed(&self, id: &str, new_state: DeviceState) -> Result<()> {
+        Ok(())
+    }
+
+    fn device_added(&self, id: &str) -> Result<()> {
+        Ok(())
+    }
+
+    fn device_removed(&self, id: &str) -> Result<()> {
+        Ok(())
+    }
+
+    fn default_device_changed(
+        &self,
+        flow: EndpointDataFlow,
+        role: EndpointRole,
+        id: &str,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    fn property_value_changed(&self, id: &str, key: &PROPERTYKEY) -> Result<()> {
+        Ok(())
+    }
+}
+
+#[must_use = "Dropping an [UnsubscribeHandle] will remove the subscription"]
+pub struct UnsubscribeHandle {
+    enumerator: audio::IMMDeviceEnumerator,
+    client: IMMNotificationClient,
+}
+
+impl Drop for UnsubscribeHandle {
+    fn drop(&mut self) {
+        _ = unsafe {
+            self.enumerator
+                .UnregisterEndpointNotificationCallback(&self.client)
+        }
+    }
+}
+
+#[implement(IMMNotificationClient)]
+struct NotificationClientAdapter {
+    inner: Box<dyn AudioDeviceCallbacks>,
+}
+
+impl audio::IMMNotificationClient_Impl for NotificationClientAdapter_Impl {
+    fn OnDeviceStateChanged(
+        &self,
+        id: &PCWSTR,
+        new_state: audio::DEVICE_STATE,
+    ) -> windows_core::Result<()> {
+        let id = from_nwstring(unsafe { id.as_wide() });
+        self.inner.device_state_changed(&id, new_state.into())
+    }
+
+    fn OnDeviceAdded(&self, id: &PCWSTR) -> windows_core::Result<()> {
+        let id = from_nwstring(unsafe { id.as_wide() });
+        self.inner.device_added(&id)
+    }
+
+    fn OnDeviceRemoved(&self, id: &PCWSTR) -> windows_core::Result<()> {
+        let id = from_nwstring(unsafe { id.as_wide() });
+        self.inner.device_removed(&id)
+    }
+
+    fn OnDefaultDeviceChanged(
+        &self,
+        flow: audio::EDataFlow,
+        role: audio::ERole,
+        id: &PCWSTR,
+    ) -> windows_core::Result<()> {
+        let id = from_nwstring(unsafe { id.as_wide() });
+        self.inner
+            .default_device_changed(flow.into(), role.into(), &id)
+    }
+
+    fn OnPropertyValueChanged(&self, id: &PCWSTR, key: &PROPERTYKEY) -> windows_core::Result<()> {
+        let id = from_nwstring(unsafe { id.as_wide() });
+        self.inner.property_value_changed(&id, key)
     }
 }
