@@ -5,10 +5,10 @@ use crate::geometry::Len2;
 use crate::strings::{as_pcwstr, from_nwstring, to_wstring};
 use crate::win::{gdi, wam};
 use bilge::prelude::*;
-use bitflags::bitflags;
 use num_enum::{FromPrimitive, IntoPrimitive};
 use windows::Win32::Foundation::{
-    COLORREF, ERROR_INVALID_WINDOW_HANDLE, GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM,
+    COLORREF, ERROR_INVALID_WINDOW_HANDLE, GetLastError, HINSTANCE, HWND, LPARAM, LRESULT,
+    SetLastError, WPARAM,
 };
 use windows::Win32::UI::WindowsAndMessaging::WNDCLASSEXW;
 use windows::core::{BOOL, PCWSTR, Result};
@@ -376,6 +376,34 @@ impl Window {
         })
     }
 
+    pub fn set_long(&self, index: i32, value: isize) -> Result<isize> {
+        unsafe {
+            SetLastError(Default::default());
+            let ret = wam::SetWindowLongPtrW(self.hwnd, wam::WINDOW_LONG_PTR_INDEX(index), value);
+            if ret != 0 {
+                let err = GetLastError();
+                if err.0 != 0 {
+                    return Err(err.into());
+                }
+            }
+            Ok(ret)
+        }
+    }
+
+    pub fn get_long(&self, index: i32) -> Result<isize> {
+        unsafe {
+            SetLastError(Default::default());
+            let ret = wam::GetWindowLongPtrW(self.hwnd, wam::WINDOW_LONG_PTR_INDEX(index));
+            if ret != 0 {
+                let err = GetLastError();
+                if err.0 != 0 {
+                    return Err(err.into());
+                }
+            }
+            Ok(ret)
+        }
+    }
+
     pub fn create<C: ToWindowClass + ?Sized>(
         class_name: &C,
         window_name: Option<&str>,
@@ -506,22 +534,9 @@ impl From<wam::WINDOWPLACEMENT> for WindowPlacement {
     }
 }
 
-macro_rules! define_flags {
-    ($(
-        $type:ident {
-            $($mine:ident = $theirs:ident;)*
-        }
-    )*) => {
-        bitflags! {$(
-            #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
-            pub struct $type: u32 {
-                $(const $mine = wam::$theirs.0;)*
-            }
-        )*}
-    }
-}
-
 define_flags! {
+    wam;
+
     WindowStyle {
         BORDER = WS_BORDER;
         CAPTION = WS_CAPTION;

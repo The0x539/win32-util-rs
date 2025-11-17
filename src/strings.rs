@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use windows::core::PCWSTR;
 
 pub fn from_nwstring(buf: &[u16]) -> String {

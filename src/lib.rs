@@ -1,5 +1,23 @@
 #![cfg_attr(doc, feature(doc_auto_cfg))]
 
+macro_rules! define_flags {
+    (
+        $them:ident;
+        $(
+            $type:ident {
+                $($mine:ident = $theirs:ident;)*
+            }
+        )*
+    ) => {
+        bitflags::bitflags! {$(
+            #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+            pub struct $type: u32 {
+                $(const $mine = $them::$theirs.0;)*
+            }
+        )*}
+    }
+}
+
 #[cfg(feature = "com")]
 pub mod com;
 
