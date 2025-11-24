@@ -41,6 +41,8 @@ win-device-properties = ["windows/Win32_Devices_Properties"]
 win-wam = ["windows/Win32_UI_WindowsAndMessaging"]
 win-gdi = ["windows/Win32_Graphics_Gdi"]
 win-registry = ["windows/Win32_System_Registry"]
+win-toolhelp = ["windows/Win32_System_Diagnostics_ToolHelp"]
+win-threading = ["windows/Win32_System_Threading"]
 
 # actual crate features
 com = ["win-com"]
@@ -74,6 +76,7 @@ window-management = [
   "dep:bilge",
 ]
 registry = ["win-registry", "dep:bitflags"]
+processes = ["win-toolhelp", "win-threading", "dep:bitflags"]
 
 [[example]]
 name = "query_display_config"
@@ -98,3 +101,7 @@ required-features = ["registry", "desktop-icons"]
 [[example]]
 name = "audio_output_listener"
 required-features = ["audio-outputs"]
+
+[[example]]
+name = "processes"
+required-features = ["processes"]

@@ -1,5 +1,9 @@
 #![cfg_attr(doc, feature(doc_auto_cfg))]
 
+#[allow(
+    unused_macros,
+    reason = "only used for some features, but not directly tied to them"
+)]
 macro_rules! define_flags {
     (
         $them:ident;
@@ -36,6 +40,9 @@ pub mod window_management;
 #[cfg(feature = "registry")]
 pub mod registry;
 
+#[cfg(feature = "processes")]
+pub mod processes;
+
 /// Re-exported modules from the windows crate with more useful naming.
 pub mod win {
     #[cfg(feature = "win-display")]
@@ -50,10 +57,14 @@ pub mod win {
     pub use windows::Win32::System::Com as com;
     #[cfg(feature = "win-com-storage")]
     pub use windows::Win32::System::Com::StructuredStorage as com_storage;
+    #[cfg(feature = "win-toolhelp")]
+    pub use windows::Win32::System::Diagnostics::ToolHelp as toolhelp;
     #[cfg(feature = "win-ole")]
     pub use windows::Win32::System::Ole as ole;
     #[cfg(feature = "win-registry")]
     pub use windows::Win32::System::Registry as reg;
+    #[cfg(feature = "win-threading")]
+    pub use windows::Win32::System::Threading as threading;
     #[cfg(feature = "win-variant")]
     pub use windows::Win32::System::Variant as variant;
     #[cfg(feature = "win-shell")]
@@ -64,6 +75,7 @@ pub mod win {
 
 pub use windows;
 pub use windows::core as windows_core;
+pub use windows::core::Result;
 
 #[cfg(feature = "geometry")]
 pub mod geometry;
