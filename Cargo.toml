@@ -105,3 +105,7 @@ required-features = ["audio-outputs"]
 [[example]]
 name = "processes"
 required-features = ["processes"]
+
+[[example]]
+name = "ttb"
+required-features = ["window-management"]

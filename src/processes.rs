@@ -1,3 +1,7 @@
+use std::ffi::OsString;
+use std::os::windows::ffi::OsStringExt;
+use std::path::PathBuf;
+
 use crate::{Result, strings::from_nwstring, win::threading, win::toolhelp};
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::core::PWSTR;
@@ -78,7 +82,7 @@ impl Process {
         }
     }
 
-    pub fn full_path(&self) -> Result<String> {
+    pub fn full_path(&self) -> Result<PathBuf> {
         let mut len = 1024;
         let mut buf = vec![0; len as usize];
         unsafe {
@@ -90,7 +94,7 @@ impl Process {
             )?;
             buf.set_len(len as usize);
         };
-        Ok(String::from_utf16(&buf).unwrap())
+        Ok(OsString::from_wide(&buf).into())
     }
 
     pub fn terminate(&self, exit_code: u32) -> Result<()> {

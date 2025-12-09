@@ -150,7 +150,9 @@ impl Window {
         }
     }
 
-    pub fn text(&self) -> Result<String> {
+    #[doc(alias = "text")]
+    #[doc(alias = "get_window_text")]
+    pub fn title(&self) -> Result<String> {
         unsafe {
             let len = wam::GetWindowTextLengthW(self.hwnd) as usize;
             if len == 0 {
@@ -460,6 +462,74 @@ impl Window {
     pub fn show(&self, state: ShowState) -> bool {
         let state = wam::SHOW_WINDOW_CMD(state.into());
         unsafe { wam::ShowWindow(self.as_raw(), state).into() }
+    }
+
+    pub fn thread_process_id(&self) -> Result<(u32, u32)> {
+        unsafe {
+            let mut process_id = 0;
+            let thread_id = wam::GetWindowThreadProcessId(self.hwnd, Some(&raw mut process_id));
+            if thread_id == 0 {
+                GetLastError().ok()?;
+            }
+            Ok((thread_id, process_id))
+        }
+    }
+
+    pub fn thread_id(&self) -> Result<u32> {
+        self.thread_process_id().map(|x| x.0)
+    }
+
+    pub fn process_id(&self) -> Result<u32> {
+        self.thread_process_id().map(|x| x.1)
+    }
+
+    pub fn send_message(
+        &self,
+        msg: u32,
+        w: impl IntoParam<WPARAM>,
+        l: impl IntoParam<LPARAM>,
+    ) -> LRESULT {
+        unsafe { wam::SendMessageW(self.hwnd, msg, Some(w.into_param()), Some(l.into_param())) }
+    }
+
+    pub fn send_notify_message(
+        &self,
+        msg: u32,
+        w: impl IntoParam<WPARAM>,
+        l: impl IntoParam<LPARAM>,
+    ) -> Result<()> {
+        unsafe { wam::SendNotifyMessageW(self.hwnd, msg, w.into_param(), l.into_param()) }
+    }
+
+    pub fn post_message(
+        &self,
+        msg: u32,
+        w: impl IntoParam<WPARAM>,
+        l: impl IntoParam<LPARAM>,
+    ) -> Result<()> {
+        unsafe { wam::PostMessageW(Some(self.hwnd), msg, w.into_param(), l.into_param()) }
+    }
+}
+
+pub trait IntoParam<T> {
+    fn into_param(self) -> T;
+}
+
+impl IntoParam<WPARAM> for usize {
+    fn into_param(self) -> WPARAM {
+        WPARAM(self)
+    }
+}
+
+impl IntoParam<LPARAM> for isize {
+    fn into_param(self) -> LPARAM {
+        LPARAM(self)
+    }
+}
+
+impl<T> IntoParam<T> for T {
+    fn into_param(self) -> T {
+        self
     }
 }
 
